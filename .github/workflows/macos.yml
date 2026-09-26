@@ -6,9 +6,11 @@
 # interactor-dress-on carries (tools/godot-sandbox/).
 name: macos
 
+# Parked: this OXRSys gate crashes in the macOS Vulkan translation layer
+# (MoltenVK) on every run and has never gone green. The simulator runtime
+# moves to Linux (RFD 2266), so the gate runs manual-only until then.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 env:
   GODOT_VERSION: 4.7.2
