@@ -24,6 +24,7 @@ const FitStage := preload("res://stages/fit_stage.gd")
 const InferStage := preload("res://stages/infer_stage.gd")
 const GgmlStage := preload("res://stages/ggml_stage.gd")
 const UsdStage := preload("res://stages/usd_stage.gd")
+const MujocoStage := preload("res://stages/mujoco_stage.gd")
 const StrokesUsd := preload("res://util/strokes_usd.gd")
 const Pipeline := preload("res://stages/pipeline.gd")
 
@@ -34,6 +35,7 @@ var fit = null
 var infer = null
 var ggml = null
 var usd = null
+var mujoco = null
 var pipeline = null
 
 func _ready() -> void:
@@ -44,8 +46,9 @@ func _ready() -> void:
 	infer = _add(InferStage, "Infer")
 	ggml = _add(GgmlStage, "Ggml")
 	usd = _add(UsdStage, "Usd")
+	mujoco = _add(MujocoStage, "Mujoco")
 	pipeline = _add(Pipeline, "Pipeline")
-	pipeline.setup({"infer": infer, "curvenet": curvenet, "fit": fit, "drape": drape, "usd": usd})
+	pipeline.setup({"infer": infer, "curvenet": curvenet, "fit": fit, "drape": drape, "usd": usd, "mujoco": mujoco})
 	var world = get_node_or_null("World")
 	if world != null and world.has_method("attach"):
 		world.attach(self)

@@ -51,6 +51,7 @@ const PEN_EVENTS_PER_FRAME := 64
 
 var infer = null
 var curvenet = null
+var mujoco = null
 var fit = null
 var drape = null
 var usd = null # stages/usd_stage.gd: strokes_from and saving strokes
@@ -122,6 +123,7 @@ const DEFAULTS := {
 func setup(stages: Dictionary) -> void:
 	infer = stages.get("infer")
 	curvenet = stages.get("curvenet")
+	mujoco = stages.get("mujoco")
 	fit = stages.get("fit")
 	drape = stages.get("drape")
 	usd = stages.get("usd")
@@ -341,6 +343,11 @@ func _rig() -> void:
 
 # --- AUTHOR / MESH -------------------------------------------------------------------------
 
+# The proximity for MuJoCo crossings (capsule radius is half of it), matching
+# the curvenet graph's snap/merge scale.
+func _crossing_proximity() -> float:
+	return float(opts.get("snap_radius", 0.02))
+
 func _author(first: bool) -> void:
 	if first:
 		var m := _mode("curvenet", curvenet, _missing(curvenet))
@@ -414,7 +421,28 @@ func _author(first: bool) -> void:
 				if _authored_of.has(e.stroke):
 					data.authored[_authored_of[e.stroke]].points.append(e.pos)
 			"end":
-				var r: String = curvenet.pen_end_raw(_stroke_ids.get(e.stroke, -1))
+				var sid: int = _stroke_ids.get(e.stroke, -1)
+				# Parallel-commit finalize (RFD 2274): the MuJoCo guest finds
+				# crossings from every authored stroke polyline and the graph splits
+				# at them; add_stroke_with_splits keeps only those on the ending
+				# stroke, so passing the whole set is safe. No guest, or none found,
+				# falls back to curvenet's own solve (the parallel-commit rollback).
+				var cx := PackedVector3Array()
+				if mujoco != null and mujoco.available():
+					var polys := []
+					for a in data.authored:
+						polys.append(a.points)
+					cx = mujoco.crossings(polys, _crossing_proximity())
+				var r: String
+				if cx.is_empty():
+					r = curvenet.pen_end_raw(sid)
+				else:
+					var flat := PackedFloat32Array()
+					for p in cx:
+						flat.append(p.x)
+						flat.append(p.y)
+						flat.append(p.z)
+					r = curvenet.pen_end_with_crossings(sid, flat)
 				data.pen_ends.append(r)
 				if r.begins_with("FAIL"):
 					_fail("pen_end stroke %d: %s" % [e.stroke, r])
