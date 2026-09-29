@@ -21,6 +21,11 @@ VSKVersion="*res://addons/vsk_version/vsk_version.gd"
 
 [display]
 
+; Exclusive fullscreen that cannot be resized or maximized (mode 3 with resizable=false drops to windowed
+; on Windows).
+window/size/mode=4
+window/size/resizable=false
+window/size/maximize_disabled=true
 window/vsync/vsync_mode=0
 
 [editor_plugins]
