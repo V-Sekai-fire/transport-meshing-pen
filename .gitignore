@@ -27,3 +27,25 @@ jdk/
 
 cmdline-tools/
 __pycache__/
+
+# The guest build (build.sh, tools/build.exs): its tree, and the ELFs this project builds but does not ship.
+build*/
+.cpm-cache/
+/probes.elf
+/probes.elf.uid
+/ggml_test.elf
+/ggml_test.elf.uid
+/rfdetr_seg.elf
+/rfdetr_seg.elf.uid
+/motion.elf
+/motion.elf.uid
+/lasso.elf
+/lasso.elf.uid
+/cage.elf
+/cage.elf.uid
+/headfit.elf
+/headfit.elf.uid
+/cassie_graph.elf
+/cassie_graph.elf.uid
+/usd_probe.elf
+/usd_probe.elf.uid
