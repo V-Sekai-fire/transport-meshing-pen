@@ -1,10 +1,11 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_main"]
 [ext_resource type="Script" path="res://xr/xr_world.gd" id="2_world"]
 [ext_resource type="Script" path="res://xr/pen_bridge.gd" id="3_bridge"]
 [ext_resource type="Script" path="res://addons/procedural_3d_grid/core/hand.gd" id="4_hand"]
 [ext_resource type="Script" path="res://addons/procedural_3d_grid/core/simple_sketcher/sketch_tool.gd" id="5_tool"]
+[ext_resource type="Script" path="res://xr/companion_pens.gd" id="6_companions"]
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_strokes"]
 
@@ -95,3 +96,6 @@ mesh = SubResource("ArrayMesh_strokes")
 script = ExtResource("3_bridge")
 tools = Array[NodePath]([NodePath("../XROrigin3D/hand_left/SketchTool"), NodePath("../XROrigin3D/hand_right/SketchTool")])
 body_path = NodePath("../Body")
+
+[node name="CompanionPens" type="Node" parent="World"]
+script = ExtResource("6_companions")

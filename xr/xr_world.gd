@@ -18,17 +18,29 @@ var main = null
 @onready var body: Node3D = $Body
 
 func _ready() -> void:
-	var xr := XRServer.find_interface("OpenXR")
-	xr_on = xr != null and xr.is_initialized()
+	var xr := _pick_xr()
+	xr_on = xr != null
 	if xr_on:
 		get_viewport().use_xr = true
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 		$XROrigin3D/XRCamera3D.current = true
-		if xr.has_method("get_system_info"):
-			xr_runtime = str(xr.get_system_info())
+		xr_runtime = str(xr.get_name())
 	else:
 		$FlatCamera.current = true
 	print("[dress-on] xr_main: %s" % ("XR on (%s)" % xr_runtime if xr_on else "flat"))
+
+# Prefer OpenVR (godot_openvr): unlike the OpenXR vive-tracker path (capped at a
+# few roles), OpenVR surfaces every real device by serial, so the companion pens
+# show up. It is not auto-initialised, so initialize() it here. Fall back to the
+# OpenXR interface (--xr-mode on) when OpenVR is absent.
+func _pick_xr() -> XRInterface:
+	var ovr := XRServer.find_interface("OpenVR")
+	if ovr != null and (ovr.is_initialized() or ovr.initialize()):
+		return ovr
+	var oxr := XRServer.find_interface("OpenXR")
+	if oxr != null and oxr.is_initialized():
+		return oxr
+	return null
 
 func attach(m) -> void:
 	main = m
