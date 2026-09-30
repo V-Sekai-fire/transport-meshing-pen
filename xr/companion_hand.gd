@@ -8,10 +8,8 @@ extends XRController3D
 @onready var sketch_tool: Node3D = $SketchTool
 
 func _process(_dt: float) -> void:
-	var pressed := get_float("trigger")
-	if pressed > 0.05:
-		sketch_tool.active = true
-		sketch_tool.pressure = pressed * 0.01 # hand.gd's max_size
-	else:
-		sketch_tool.active = get_has_tracking_data()
-		sketch_tool.pressure = 0.005
+	# No OpenVR action manifest yet, so there is no "trigger" input to read, and
+	# reading one null-derefs the double build. Draw whenever the pen exists; the
+	# feeder's action manifest gates on the trigger later.
+	sketch_tool.active = true
+	sketch_tool.pressure = 0.012

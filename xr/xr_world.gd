@@ -29,14 +29,12 @@ func _ready() -> void:
 		$FlatCamera.current = true
 	print("[dress-on] xr_main: %s" % ("XR on (%s)" % xr_runtime if xr_on else "flat"))
 
-# Prefer OpenVR (godot_openvr): unlike the OpenXR vive-tracker path (capped at a
-# few roles), OpenVR surfaces every real device by serial, so the companion pens
-# show up. It is not auto-initialised, so initialize() it here. Fall back to the
-# OpenXR interface (--xr-mode on) when OpenVR is absent.
+# OpenXR renders the headset. OpenVR is NOT used to render here: its frame submit
+# goes through Proton's vrcompositor bridge, which asserts on the Frame
+# (vrcompositor_manual.c). OpenVR is instead used only to track the vpen devices
+# past the OpenXR role cap (companion_pens). So the person's view is OpenXR, or
+# flat when XR is off; the companions ride OpenVR tracking either way.
 func _pick_xr() -> XRInterface:
-	var ovr := XRServer.find_interface("OpenVR")
-	if ovr != null and (ovr.is_initialized() or ovr.initialize()):
-		return ovr
 	var oxr := XRServer.find_interface("OpenXR")
 	if oxr != null and oxr.is_initialized():
 		return oxr

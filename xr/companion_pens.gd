@@ -15,15 +15,64 @@ var _origin: Node3D = null
 var _companions := {} # tracker_name -> XRController3D
 
 func _ready() -> void:
-	_xr = XRServer.find_interface("OpenVR")
+	print("[dress-on] companion pens: _ready")
 	_origin = get_node_or_null("../XROrigin3D")
-	if _xr == null or _origin == null:
+	if _origin == null:
+		return
+	# Bring OpenVR up for tracking only (never rendering — that submit asserts under
+	# Proton). xr_world renders via OpenXR or flat; this reads the vpen devices.
+	_xr = await _ensure_openvr()
+	print("[dress-on] companion pens: OpenVR up=%s" % (_xr != null and _xr.is_initialized()))
+	if _xr == null or not _xr.is_initialized():
+		print("[dress-on] companion pens: OpenVR not up, none spawned")
 		return
 	XRServer.tracker_added.connect(_on_added)
 	XRServer.tracker_removed.connect(_on_removed)
-	# Devices already present before we connected.
-	for tracker_name in XRServer.get_trackers(XRServer.TRACKER_CONTROLLER):
-		_on_added(tracker_name, XRServer.TRACKER_CONTROLLER)
+	# OpenVR devices present at init do not reliably fire tracker_added and settle a
+	# few frames after initialize(), so poll get_trackers (dedup via _companions)
+	# for a few seconds rather than scanning once.
+	var t0 := Time.get_ticks_msec()
+	var diag := true
+	while Time.get_ticks_msec() - t0 < 6000:
+		var controllers := XRServer.get_trackers(XRServer.TRACKER_CONTROLLER)
+		if diag:
+			diag = false
+			var serials := []
+			for tn in controllers:
+				serials.append(_serial(tn))
+			print("[dress-on] companion pens: first scan %d controllers, serials=%s" % [controllers.size(), str(serials)])
+		for tracker_name in controllers:
+			_on_added(tracker_name, XRServer.TRACKER_CONTROLLER)
+		if _companions.size() > 0 and _companions.size() >= controllers.size():
+			break
+		await get_tree().process_frame
+	print("[dress-on] companion pens: %d spawned" % _companions.size())
+	if OS.has_environment("DRESS_POSE_DEBUG"):
+		for _k in 8:
+			await get_tree().create_timer(0.4).timeout
+			var s := ""
+			for tn in _companions:
+				var c: Node3D = _companions[tn]
+				s += " %s=%.2v" % [tn, c.global_position]
+			print("[dress-on] companion pos:%s" % s)
+
+# Find the OpenVR interface (godot_openvr adds it on a deferred call, so wait a few
+# frames), else instantiate it, then initialize() for tracking. Not made primary
+# and no viewport uses it, so Godot never submits a frame through it.
+func _ensure_openvr() -> XRInterface:
+	var ovr: XRInterface = XRServer.find_interface("OpenVR")
+	var tries := 0
+	while ovr == null and tries < 60:
+		await get_tree().process_frame
+		ovr = XRServer.find_interface("OpenVR")
+		tries += 1
+	if ovr == null and ClassDB.class_exists("XRInterfaceOpenVR"):
+		ovr = ClassDB.instantiate("XRInterfaceOpenVR")
+		if ovr != null:
+			XRServer.add_interface(ovr)
+	if ovr != null and not ovr.is_initialized():
+		ovr.initialize()
+	return ovr
 
 func _serial(tracker_name) -> String:
 	var t = XRServer.get_tracker(tracker_name)
@@ -46,6 +95,17 @@ func _on_added(tracker_name, type) -> void:
 	tool.set("CANVAS", NodePath("../../../Body"))
 	tool.set("color", COMPANION_COLOR)
 	ctrl.add_child(tool)
+	# A coloured tip so the companion is visible even when it is not moving.
+	var tip := MeshInstance3D.new()
+	tip.name = "Tip"
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.02
+	sphere.height = 0.04
+	tip.mesh = sphere
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = COMPANION_COLOR
+	tip.material_override = mat
+	ctrl.add_child(tip)
 	_origin.add_child(ctrl)
 	_companions[tracker_name] = ctrl
 	print("[dress-on] companion pen: %s (%s)" % [str(tracker_name), _serial(tracker_name)])
