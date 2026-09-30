@@ -306,10 +306,10 @@ target_include_directories(rd_worker PRIVATE ${GUEST_RUNTIME_ROOT}/guest ${CMAKE
 # L-BFGS-B and the rotation fitter contract-sinew-align. Everything is compiled
 # uncontracted, so the guest computes what tests/headfit's native runner computes.
 add_stage_elf(headfit ${HEADFIT_ROOT}/guest/headfit/main.cpp ${HEADFIT_ROOT}/guest/headfit/hf_core.cpp
-	${HEADFIT_ROOT}/guest/headfit/hf_geom.cpp ${HEADFIT_ROOT}/guest/headfit/hf_kernels.cpp
+	${GUEST_COMMON_ROOT}/guest/common/hf_geom.cpp ${HEADFIT_ROOT}/guest/headfit/hf_kernels.cpp
 	${LBFGSB_ROOT}/guest/drape/lbfgsb.cpp ${LBFGSB_ROOT}/guest/drape/vec_cpu.cpp
 	${SINEW_ALIGN_ROOT}/vendor/sinew-align/sinew_align.c)
-set_source_files_properties(${HEADFIT_ROOT}/guest/headfit/hf_core.cpp ${HEADFIT_ROOT}/guest/headfit/hf_geom.cpp
+set_source_files_properties(${HEADFIT_ROOT}/guest/headfit/hf_core.cpp ${GUEST_COMMON_ROOT}/guest/common/hf_geom.cpp
 	${HEADFIT_ROOT}/guest/headfit/hf_kernels.cpp ${SINEW_ALIGN_ROOT}/vendor/sinew-align/sinew_align.c
 	PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 target_include_directories(headfit PRIVATE ${HEADFIT_ROOT}/guest/headfit ${LBFGSB_ROOT}/guest/drape
