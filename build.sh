@@ -104,10 +104,10 @@ fi
 # A Linux slangc writes the cpp emits with an absolute include of its prelude
 # where the reference inlines it; put the inline form back (byte-identical to
 # the committed emits, so nothing churns).
-for repo in 2-contract/ggml-rd 2-contract/lbfgsb 2-contract/anny-kernels 3-interactor/drape 3-interactor/curvenet \
-	3-interactor/garment-fit 3-interactor/cage 3-interactor/headfit; do
-	python3 "$RUNTIME/tools/inline_prelude.py" "$WEFT/$repo"
-done
+# One call: a repository whose emits were all just regenerated takes the prelude from another's.
+EMIT_REPOS=(2-contract/ggml-rd 2-contract/lbfgsb 2-contract/anny-kernels 3-interactor/drape 3-interactor/curvenet
+	3-interactor/garment-fit 3-interactor/cage 3-interactor/headfit)
+python3 "$RUNTIME/tools/inline_prelude.py" "${EMIT_REPOS[@]/#/$WEFT/}"
 BUILD_FIT="${BUILD_FIT:-1}"
 if [ "$BUILD_FIT" = 0 ]; then WITH_FIT=OFF; else WITH_FIT=ON; fi
 if [ "$WITH_FIT" = ON ]; then

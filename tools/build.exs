@@ -107,7 +107,7 @@ defmodule Build do
     # This machine's slangc may have rewritten the cpp emits with an absolute
     # include of its prelude; put the inline form back (tools/inline_prelude.py).
     prelude = Path.join(@weft, "2-contract/guest-runtime/tools/inline_prelude.py")
-    for repo <- @emit_repos, do: run("python3", [prelude, Path.join(@weft, repo)])
+    run("python3", [prelude | Enum.map(@emit_repos, &Path.join(@weft, &1))])
     for t <- opts.targets, do: File.exists?(Path.join(@root, "#{t}.elf")) || fail("no #{t}.elf")
     say("elfs: #{Enum.join(opts.targets, " ")}")
   end
