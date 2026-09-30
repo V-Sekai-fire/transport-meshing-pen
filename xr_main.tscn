@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_main"]
 [ext_resource type="Script" path="res://xr/xr_world.gd" id="2_world"]
@@ -6,12 +6,12 @@
 [ext_resource type="Script" path="res://addons/procedural_3d_grid/core/hand.gd" id="4_hand"]
 [ext_resource type="Script" path="res://addons/procedural_3d_grid/core/simple_sketcher/sketch_tool.gd" id="5_tool"]
 [ext_resource type="Script" path="res://xr/companion_pens.gd" id="6_companions"]
+[ext_resource type="Shader" path="res://addons/procedural_3d_grid/core/simple_sketcher/simple_sketch.gdshader" id="7_strokes"]
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_strokes"]
 
-[sub_resource type="StandardMaterial3D" id="Mat_strokes"]
-vertex_color_use_as_albedo = true
-cull_mode = 2
+[sub_resource type="ShaderMaterial" id="Mat_strokes"]
+shader = ExtResource("7_strokes")
 
 [sub_resource type="SphereMesh" id="Sphere_tip"]
 radius = 0.01
