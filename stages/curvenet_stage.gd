@@ -9,7 +9,7 @@
 extends "res://stages/stage_base.gd"
 
 const MeshWire := preload("res://util/mesh_wire.gd")
-const REQUIRED := ["cn_reset", "cn_set_param", "cn_set_body", "pen_begin", "pen_point", "pen_end", "patch_count",
+const REQUIRED := ["cn_reset", "cn_set_param", "cn_set_body", "pen_begin", "pen_point", "pen_end", "pen_end_with_crossings", "patch_count",
 		"curvenet_build", "curvenet_curves", "curvenet_knots", "mesh_build", "mesh_vertices", "mesh_indices",
 		"mesh_boundary_loops"]
 
@@ -46,6 +46,10 @@ func pen_point_at(id: int, p: Vector3, pressure: float) -> String:
 
 func pen_end_raw(id: int) -> String:
 	return str(call_now("pen_end", [id]))
+
+# Finalize a stroke against crossings the collision guest found (flat xyz).
+func pen_end_with_crossings(id: int, crossings: PackedFloat32Array) -> String:
+	return str(call_now("pen_end_with_crossings", [id, crossings]))
 
 func patches() -> int:
 	var r = call_now("patch_count")
