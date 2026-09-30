@@ -18,7 +18,7 @@ var main = null
 @onready var body: Node3D = $Body
 
 func _ready() -> void:
-	var xr: XRInterface = await _pick_xr()
+	var xr := _pick_xr()
 	xr_on = xr != null
 	if xr_on:
 		get_viewport().use_xr = true
