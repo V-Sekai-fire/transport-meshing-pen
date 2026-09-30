@@ -18,7 +18,7 @@ var main = null
 @onready var body: Node3D = $Body
 
 func _ready() -> void:
-	var xr := _pick_xr()
+	var xr: XRInterface = await _pick_xr()
 	xr_on = xr != null
 	if xr_on:
 		get_viewport().use_xr = true
@@ -29,11 +29,12 @@ func _ready() -> void:
 		$FlatCamera.current = true
 	print("[dress-on] xr_main: %s" % ("XR on (%s)" % xr_runtime if xr_on else "flat"))
 
-# OpenXR renders the headset. OpenVR is NOT used to render here: its frame submit
-# goes through Proton's vrcompositor bridge, which asserts on the Frame
-# (vrcompositor_manual.c). OpenVR is instead used only to track the vpen devices
-# past the OpenXR role cap (companion_pens). So the person's view is OpenXR, or
-# flat when XR is off; the companions ride OpenVR tracking either way.
+# OpenXR renders the headset. OpenVR rendering is a hard wall under Proton: its
+# frame submit aborts in Proton's vrclient (vrcompositor_manual.c:2321, "!status")
+# on the multiview array submit, and --xr-mode on crashes at startup. So the person
+# wears and draws through OpenXR; OpenVR is the tracking/controller stack (flat/
+# companion path). Fixing OpenVR render needs non-array per-eye submits in
+# godot_openvr plus Proton cooperation, not a mode toggle here.
 func _pick_xr() -> XRInterface:
 	var oxr := XRServer.find_interface("OpenXR")
 	if oxr != null and oxr.is_initialized():
