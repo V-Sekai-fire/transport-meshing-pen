@@ -9,7 +9,8 @@ extends XRController3D
 
 func _process(_dt: float) -> void:
 	# No OpenVR action manifest yet, so there is no "trigger" input to read, and
-	# reading one null-derefs the double build. Draw whenever the pen exists; the
-	# feeder's action manifest gates on the trigger later.
-	sketch_tool.active = true
+	# reading one null-derefs the double build. Draw while the device has a valid
+	# pose, which also skips the frames before the first pose (no origin streak);
+	# the feeder's action manifest gates on the trigger later.
+	sketch_tool.active = get_has_tracking_data()
 	sketch_tool.pressure = 0.012

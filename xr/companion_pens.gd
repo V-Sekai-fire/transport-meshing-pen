@@ -13,14 +13,24 @@ const PROP_SERIAL := 1002 # vr::Prop_SerialNumber_String
 var _xr = null
 var _origin: Node3D = null
 var _companions := {} # tracker_name -> XRController3D
+var _model_queue := [] # [{mi, candidates, fallback}] loaded one at a time
+var _loading := false
 
 func _ready() -> void:
 	print("[dress-on] companion pens: _ready")
 	_origin = get_node_or_null("../XROrigin3D")
 	if _origin == null:
 		return
+	# OpenVR and OpenXR do not coexist here: godot_openvr crashes in
+	# _update_device_roles alongside an OpenXR session. So when OpenXR renders the
+	# headset the companions stay off (the person draws with their own controllers);
+	# they run in the flat/OpenVR path.
+	var oxr := XRServer.find_interface("OpenXR")
+	if oxr != null and oxr.is_initialized():
+		print("[dress-on] companion pens: OpenXR active, companions off")
+		return
 	# Bring OpenVR up for tracking only (never rendering — that submit asserts under
-	# Proton). xr_world renders via OpenXR or flat; this reads the vpen devices.
+	# Proton). xr_world renders flat; this reads the vpen devices.
 	_xr = await _ensure_openvr()
 	print("[dress-on] companion pens: OpenVR up=%s" % (_xr != null and _xr.is_initialized()))
 	if _xr == null or not _xr.is_initialized():
@@ -47,14 +57,13 @@ func _ready() -> void:
 			break
 		await get_tree().process_frame
 	print("[dress-on] companion pens: %d spawned" % _companions.size())
-	if OS.has_environment("DRESS_POSE_DEBUG"):
-		for _k in 8:
-			await get_tree().create_timer(0.4).timeout
-			var s := ""
-			for tn in _companions:
-				var c: Node3D = _companions[tn]
-				s += " %s=%.2v" % [tn, c.global_position]
-			print("[dress-on] companion pos:%s" % s)
+	# The person's own controllers get their real render models too, so both the
+	# hands and the companions show as posed device meshes. Skip a hand whose
+	# device is absent (no model), so nothing stray appears at the origin.
+	for hand_name in ["hand_left", "hand_right"]:
+		var hand: XRController3D = _origin.get_node_or_null(hand_name)
+		if hand != null and String(hand.tracker) != "":
+			_attach_render_model(hand, hand.tracker, Color(0.72, 0.74, 0.8), false)
 
 # Find the OpenVR interface (godot_openvr adds it on a deferred call, so wait a few
 # frames), else instantiate it, then initialize() for tracking. Not made primary
@@ -73,6 +82,76 @@ func _ensure_openvr() -> XRInterface:
 	if ovr != null and not ovr.is_initialized():
 		ovr.initialize()
 	return ovr
+
+const PROP_RENDER_MODEL := 1003 # vr::Prop_RenderModelName_String
+
+# Attach the device's actual OpenVR render model (generic_tracker for a vpen, the
+# real controller mesh for the person's hands) so orientation reads. Tinted, since
+# the model comes untextured. Falls back to an oriented cone when a device reports
+# no model (fallback off skips instead, so an absent controller shows nothing).
+func _attach_render_model(ctrl: Node3D, tracker_name, tint: Color, fallback := true) -> void:
+	var t = XRServer.get_tracker(tracker_name)
+	var reported := ""
+	if _xr != null and t != null:
+		reported = str(_xr.get_tracked_device_property(t, PROP_RENDER_MODEL))
+	var has_reported := reported != "" and reported != "<null>"
+	# Nothing to show for an absent person controller (no reported model, no fallback).
+	if _xr == null or (not has_reported and not fallback):
+		return
+	# Prefer the model the driver reports, then a generic model the driver always
+	# provides, then an oriented cone.
+	var candidates: Array[String] = []
+	if has_reported:
+		candidates.append(reported)
+	candidates.append("generic_controller")
+	candidates.append("generic_tracker")
+	var mi := MeshInstance3D.new()
+	mi.name = "Model"
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = tint
+	mi.material_override = mat
+	ctrl.add_child(mi)
+	_model_queue.append({"mi": mi, "candidates": candidates, "fallback": fallback})
+	if not _loading:
+		_load_models()
+
+# Load render models one at a time. godot_openvr's loader is not reentrant, so many
+# concurrent load_render_model calls crash it; a serial queue is the state machine.
+func _load_models() -> void:
+	_loading = true
+	while not _model_queue.is_empty():
+		var item = _model_queue.pop_front()
+		await _fill_render_model(item["mi"], item["candidates"], item["fallback"])
+	_loading = false
+
+# A render model loads async: godot_openvr queues it and its per-frame process
+# fills the mesh one load_render_model call returns. For each candidate submit once,
+# then poll that mesh's surface count each frame (a state check, not a re-request);
+# take the first that fills, else the next, else an oriented cone.
+func _fill_render_model(mi: MeshInstance3D, candidates: Array, fallback: bool) -> void:
+	for model_name in candidates:
+		if not is_instance_valid(mi):
+			return
+		var mesh = _xr.load_render_model(model_name)
+		if mesh == null or not (mesh is Mesh):
+			continue
+		mi.mesh = mesh
+		for _i in 200:
+			if not is_instance_valid(mi):
+				return
+			if mesh.get_surface_count() > 0:
+				return
+			await get_tree().process_frame
+	if fallback and is_instance_valid(mi) and (mi.mesh == null or mi.mesh.get_surface_count() == 0):
+		mi.mesh = _cone_mesh()
+		mi.rotation_degrees = Vector3(-90, 0, 0)
+
+func _cone_mesh() -> Mesh:
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 0.02
+	cone.height = 0.10
+	return cone
 
 func _serial(tracker_name) -> String:
 	var t = XRServer.get_tracker(tracker_name)
@@ -95,17 +174,7 @@ func _on_added(tracker_name, type) -> void:
 	tool.set("CANVAS", NodePath("../../../Body"))
 	tool.set("color", COMPANION_COLOR)
 	ctrl.add_child(tool)
-	# A coloured tip so the companion is visible even when it is not moving.
-	var tip := MeshInstance3D.new()
-	tip.name = "Tip"
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.02
-	sphere.height = 0.04
-	tip.mesh = sphere
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = COMPANION_COLOR
-	tip.material_override = mat
-	ctrl.add_child(tip)
+	_attach_render_model(ctrl, tracker_name, COMPANION_COLOR)
 	_origin.add_child(ctrl)
 	_companions[tracker_name] = ctrl
 	print("[dress-on] companion pen: %s (%s)" % [str(tracker_name), _serial(tracker_name)])
