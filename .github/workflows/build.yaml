@@ -58,7 +58,7 @@ jobs:
       - name: Fetch docker action
         id: fetch-action
         run: |
-          git clone https://github.com/V-Sekai/v-sekai-game.git
+          git clone --branch feat/rx https://github.com/V-Sekai-fire/v-sekai-game.git
 
       - name: Docker build project
         id: docker
@@ -136,7 +136,7 @@ jobs:
       - name: Fetch docker itch action
         id: fetch-itch-action
         run: |
-          git clone https://github.com/V-Sekai/v-sekai-game.git
+          git clone --branch feat/rx https://github.com/V-Sekai-fire/v-sekai-game.git
 
       - name: Download Artifacts
         uses: actions/download-artifact@v4
