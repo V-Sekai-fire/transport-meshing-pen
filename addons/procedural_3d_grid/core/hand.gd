@@ -12,6 +12,11 @@ var prev_hand_pressed: float
 
 
 func _process(_delta: float) -> void:
+	# get_float/is_button_pressed null-deref the double build when the controller has
+	# no action map, and only OpenXR supplies one here; skip inputs unless it is up.
+	var oxr := XRServer.find_interface("OpenXR")
+	if oxr == null or not oxr.is_initialized():
+		return
 	var hand_pressed: float = get_float("trigger")
 	var max_size: float = 0.01
 

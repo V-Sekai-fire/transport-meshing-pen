@@ -1,8 +1,8 @@
-# The Skateboard's simulator gate on Linux, CPU-only: replay a saved-stroke
-# .usda through the pipeline to MESH (curvenet is CPU in the guest, no
-# RenderingDevice), so it runs headless with no GPU/lavapipe. The committed
-# Linux sandbox .so and guest ELFs are used as-is; nothing is rebuilt.
-name: linux
+# The gates at double: the Linux double editor from the engine release
+# tools/frame/releases.env pins and the vendored double addon, each checked
+# against its release's SHA256SUMS before anything runs. linux.yml stays the
+# single-precision arm on stock Godot.
+name: double
 on:
   push:
     branches: [feat/dress-on, main/main]
@@ -11,22 +11,29 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-env:
-  GODOT_VERSION: 4.7.2
 jobs:
   gate:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Godot
+      - name: The pinned engine and the vendored addon, checked
         run: |
-          curl -fsSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
-          unzip -oq godot.zip
-          chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
-          echo "GODOT=$PWD/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
-      - name: Import
-        run: timeout 300 "$GODOT" --headless --path . --import || true
+          . tools/frame/releases.env
+          base=https://github.com/V-Sekai-fire/service-godot-build/releases/download
+          bin=godot.linuxbsd.editor.double.x86_64
+          so=libgodot_riscv.linux.template_release.double.x86_64.so
+          curl -fsSL -o "$RUNNER_TEMP/engine.sums" "$base/$ENGINE_TAG/SHA256SUMS"
+          curl -fsSL -o "$RUNNER_TEMP/addon.sums" "$base/$ADDON_TAG/SHA256SUMS"
+          curl -fsSL -o "$RUNNER_TEMP/$bin" "$base/$ENGINE_TAG/$bin"
+          (cd "$RUNNER_TEMP" && grep " $bin\$" engine.sums | sha256sum -c -)
+          (cd addons/godot_sandbox/bin && grep " $so\$" "$RUNNER_TEMP/addon.sums" | sha256sum -c -)
+          chmod +x "$RUNNER_TEMP/$bin"
+          echo "GODOT=$RUNNER_TEMP/$bin" >> "$GITHUB_ENV"
+      - name: The engine is double
+        run: |
+          "$GODOT" --headless --version | tee version.txt
+          grep -q '\.double\.' version.txt
       - name: Load probe (curvenet.elf + usd.elf)
         run: GODOT="$GODOT" bash tools/test.sh
       - name: Saved-stroke replay gate (skirt.usda)

@@ -41,15 +41,11 @@ func rig_fixture() -> Dictionary:
 func garment_fixture() -> Dictionary:
 	var g := ObjIO.read(FIXTURE_DIR + "garment.obj")
 	var s := ObjIO.read(FIXTURE_DIR + "garment_skeleton.obj")
-	var nf := ObjIO.read_ints(FIXTURE_DIR + "no-fit.txt")
-	for m in [g, s, nf]:
+	for m in [g, s]:
 		if m.has("error"):
 			return {"error": m.error}
 	var a := Skeleton15.adapt({"positions": s.v, "bones": s.l})
 	if a.error != "":
 		return {"error": "garment skeleton: " + a.error}
-	return {"vertices": g.v, "triangles": g.f, "source_joints": a.joints, "nofit": nf.ints,
+	return {"vertices": g.v, "triangles": g.f, "source_joints": a.joints,
 			"source": "FIXTURE fixtures/foxgirl/garment.obj (LCL_Skirt_DressEvening_003)"}
-
-func fit_config_text() -> String:
-	return FileAccess.get_file_as_string(FIXTURE_DIR + "fit_config.json")

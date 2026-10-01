@@ -4,7 +4,7 @@ name: guests
 
 on:
   push:
-    branches: [feat/dress-on]
+    branches: [feat/rung-dev, feat/dress-on]
   pull_request:
   workflow_dispatch:
 
@@ -50,10 +50,8 @@ jobs:
           git config --global user.email "guests-ci@users.noreply.github.com"
           repo init -q -u https://github.com/V-Sekai-fire/contract-manifest-taskweft -b "$MANIFEST_BRANCH" --depth=1 --no-clone-bundle
           repo sync -q -c --no-tags -j8 \
-            contract-guest-runtime contract-guest-common contract-ggml-rd contract-lbfgsb contract-anny-kernels \
-            contract-sinew-align interactor-drape interactor-curvenet interactor-garment-fit interactor-cage \
-            interactor-headfit interactor-lasso interactor-motion-guest interactor-rfdetr-seg-guest \
-            interactor-usd-guest ggml kimodo-ggml interactor-rf-detr-ggml
+            contract-guest-runtime contract-guest-common contract-ggml-rd \
+            interactor-curvenet interactor-lasso interactor-usd-guest ggml
       - name: Build, harnesses and the load gate
         working-directory: weft/1-transport/meshing-pen
         run: elixir tools/build.exs --gates=load

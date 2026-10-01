@@ -1,7 +1,9 @@
 # Generate the scripted-skirt stroke fixture as OpenUSD, headless (no XR, no RD):
 # read the FoxGirl body and 15-joint skeleton fixtures, make the 6-stroke
 # scripted skirt (xr/pen_source_scripted.gd), and write it through usd.elf
-# (util/strokes_usd.gd). The fixture feeds tools/gate_replay.gd --strokes.
+# (util/strokes_usd.gd). The fixture feeds tools/gate_replay.gd --strokes, which
+# checks the run against the source's expected cycles and openings, carried in
+# customLayerData as JSON text (usd.elf writes every layer value as a string).
 #
 #   godot --headless --path . --xr-mode off --script tools/make_skirt.gd -- \
 #       --out=res://tools/strokes/skirt.usda
@@ -38,7 +40,9 @@ func _initialize() -> void:
 	if stage.sandbox == null:
 		return _die("usd.elf did not load: " + str(stage.reason))
 	stage.init()
-	var w := StrokesUsd.to_usda(stage, src.strokes, {"source": "scripted skirt (pen_source_scripted)", "gate": "2263"})
+	var expected := JSON.stringify({"cycles": src.expected.cycles, "openings": src.expected.openings})
+	var w := StrokesUsd.to_usda(stage, src.strokes, {"source": "scripted skirt (pen_source_scripted)", "gate": "2263",
+			"expected": expected})
 	if w.has("error"):
 		return _die("to_usda: " + w.error)
 	var abs_out := ProjectSettings.globalize_path(out) if out.begins_with("res://") else out
