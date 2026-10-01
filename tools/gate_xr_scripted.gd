@@ -234,23 +234,44 @@ func _caption_layer() -> void:
 # and the caption band is counted pixel by pixel: panel colour and white text, or a FAIL.
 func _captions() -> void:
 	var h := int(root.get_visible_rect().size.y)
-	if h != _cap_h:
-		_cap_h = h
-		_cap_label.add_theme_font_size_override("font_size", maxi(h / 24, 12))
 	var t := _movie_t()
 	var b := -1
 	for i in _caps.size():
 		if t + 1e-6 >= _caps[i].at:
 			b = i
+	if b != _beat or h != _cap_h:
+		_cap_h = h
+		_cap_label.text = _caption_text(_caps[b].text)
+		_fit_caption()
 	if b != _beat:
 		_beat = b
-		_cap_label.text = _caps[b].text
 		_say("caption %s at %.2f s: %s" % [_caps[b].beat, t, _caps[b].text])
 	var end: float = _caps[b + 1].at if b + 1 < _caps.size() else (_clip_s if _clip_s > 0.0 else _caps[b].at + 2.0)
 	var mid: float = (_caps[b].at + end) / 2.0
 	if _cap_checks.size() == b and t >= mid:
 		_cap_checks.append(_caption_pixels(_caps[b].beat))
 
+
+# A URL starts its own line, and the font shrinks until the longest word fits the band, so
+# autowrap never breaks a URL at its slashes or hyphens.
+func _caption_text(s: String) -> String:
+	var out := ""
+	for word in s.split(" ", false):
+		if out != "":
+			out += "\n" if word.contains("://") else " "
+		out += word
+	return out
+
+
+func _fit_caption() -> void:
+	var font := _cap_label.get_theme_font("font")
+	var avail := root.get_visible_rect().size.x - 60.0
+	var size := maxi(_cap_h / 24, 12)
+	for word in _cap_label.text.replace("\n", " ").split(" ", false):
+		var w := font.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		if w > avail:
+			size = int(size * avail / w)
+	_cap_label.add_theme_font_size_override("font_size", maxi(size, 12))
 
 func _caption_pixels(beat: String) -> Dictionary:
 	var img := root.get_viewport().get_texture().get_image()
