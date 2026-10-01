@@ -28,3 +28,28 @@ authors:
 repository-code: https://github.com/V-Sekai-fire/godot-sandbox
 commit: a45da9fad0a2b1463c05f728823fc069e0f11bc0
 license: BSD-3-Clause
+references:
+  - type: software
+    title: godot-sandbox at double precision (the double libraries in bin/)
+    authors:
+      - name: Alf-André Walla (fwsGonzo)
+      - name: V-Sekai-fire
+    repository-code: https://github.com/V-Sekai-fire/godot-sandbox
+    commit: ade650e9e902a340e8f8803c570ed11a9ba9d643
+    url: https://github.com/V-Sekai-fire/service-godot-build/releases/tag/v20260930-addon.1
+    license: BSD-3-Clause
+    notes: >-
+      b1118e5 merged with the bintr-emit commit, built by service-godot-build's
+      addon.yml at df0be66 (run 36813244229) with SCons: precision=double
+      target=template_release, no JIT and no TCC; windows x86_64 with
+      use_mingw=yes use_llvm=yes and llvm-mingw 20260922, linux x86_64 on
+      ubuntu-22.04, macos universal. tools/vendor_addon.sh checks each file
+      against the release's SHA256SUMS before vendoring it. sha256:
+      libgodot_riscv.windows.template_release.double.x86_64.dll
+      d8c043e51afa53bd3ac779491bd769d46d4d294e13772eb52a06b0fbc9453520;
+      libgodot_riscv.linux.template_release.double.x86_64.so
+      56fda131e858c87bcf970316d4a0d2c36665bb2f6fb223dc1ebe821199dfea4b;
+      libgodot_riscv.macos.template_release.double.universal
+      e2464e813b1e347040b45f5d6c6a39ce099d5775f9958b6214c418b115bf0822, with
+      its Resources/Info.plist
+      2e62373a2fed03fcc4d6df9c8edde42533f9b726af8d1690d3ea32701b8097e4.

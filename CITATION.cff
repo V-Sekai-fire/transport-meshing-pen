@@ -69,3 +69,30 @@ references:
       `openxr_action_map.tres` binds the pinch, grab and draw actions. OpenXR is a
       trademark of The Khronos Group Inc., and this project is not affiliated with
       or endorsed by them.
+
+  # ── The double build the rung runs on (RFD 2293) ─────────────────────────────
+  - type: software
+    title: "Godot Engine at double precision"
+    authors:
+      - name: "Juan Linietsky, Ariel Manzur and the Godot contributors"
+    year: 2026
+    version: "4.8.dev.double.gh.97dab7a63"
+    license: MIT
+    repository-code: "https://github.com/V-Sekai-fire/entities-godot"
+    commit: 97dab7a638ae8b613dcf6e657f93f020471d9040
+    url: "https://github.com/V-Sekai-fire/service-godot-build/releases/tag/v20260930-double.1"
+    notes: >
+      Built by service-godot-build's double.yml at d6a6de0 (run 36809657978)
+      with the flags precision=double module_text_server_fb_enabled=yes
+      optimize=speed d3d12=no angle=no accesskit=no; windows x86_64 with
+      use_mingw=yes use_llvm=yes and llvm-mingw 20260922. tools/frame/releases.env
+      pins the tag; push.sh and the double workflow check each binary against
+      the release's SHA256SUMS. sha256:
+      godot.windows.editor.double.x86_64.llvm.exe
+      bb91fc391779611cb6e3c81f8859dee105d282e444b860d5cce1f3803686c3ab, its
+      console wrapper 217c7b70aa5f79cc9099b05c22547ddec676d8d6739a0a95e36f17615a8a4404
+      (the headset, through its compatibility layer);
+      godot.linuxbsd.editor.double.x86_64
+      37c6962fcc76d1773a596440f310f52ad5cf18011e74a712a5b465c3240e919b (the
+      double gates in CI); godot.macos.editor.double.arm64
+      5f6f2df33708d8f522e0cb5f40af58bd44c1eccb2dda7128081f4056b1de8dce (the desk).
