@@ -16,12 +16,13 @@ trap 'rm -rf "$tmp"' EXIT
 
 curl -fsSL -o "$tmp/SHA256SUMS" "$base/SHA256SUMS"
 for f in libgodot_riscv.windows.template_release.double.x86_64.dll \
-         libgodot_riscv.linux.template_release.double.x86_64.so "$mac"; do
+         libgodot_riscv.linux.template_release.double.x86_64.so "$mac" "$mac.Info.plist"; do
   curl -fsSL -o "$tmp/$f" "$base/$f"
   grep -q " $f\$" "$tmp/SHA256SUMS" || { echo "FAIL $f is not in $tag's SHA256SUMS"; exit 1; }
   (cd "$tmp" && grep " $f\$" SHA256SUMS | sum256 -c --quiet -) || { echo "FAIL $f does not match $tag"; exit 1; }
 done
 cp "$tmp"/*.dll "$tmp"/*.so "$bin/"
-mkdir -p "$bin/$mac.framework"
+mkdir -p "$bin/$mac.framework/Resources"
 cp "$tmp/$mac" "$bin/$mac.framework/$mac"
+cp "$tmp/$mac.Info.plist" "$bin/$mac.framework/Resources/Info.plist"
 grep -E ' libgodot_riscv\.[a-z]+\.template_release\.double\.' "$tmp/SHA256SUMS"
