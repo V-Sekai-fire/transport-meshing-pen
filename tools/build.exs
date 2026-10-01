@@ -1,15 +1,15 @@
 # One step, the same on a desk and in CI: elixir tools/build.exs [options]
 #
-# It checks the tools, gets the riscv64 sysroot, cross-builds the guest ELFs
-# from the goal manifest's sibling checkouts into this project's root
-# (build.sh), builds and runs the host harnesses (the ggml-rd kernel L2, the
-# G3.graph oracle), and, when Godot is on the PATH, imports the project and
-# runs the headless gates. Every step prints what it runs; the first failure
-# stops the build with a non-zero exit. Plain Elixir, no Mix, no dependencies:
-# what erlef/setup-beam gives a GitHub runner and `apt install elixir` a desk.
+# It checks the tools, gets the riscv64 sysroot, cross-builds the rung's
+# guest ELFs from the goal manifest's sibling checkouts into this project's
+# root (build.sh), builds and runs the host harnesses (the ggml-rd kernel L2,
+# the G3.graph oracle), and, when Godot is on the PATH, imports the project
+# and runs the headless gates. Every step prints what it runs; the first
+# failure stops the build with a non-zero exit. Plain Elixir, no Mix, no
+# dependencies: what erlef/setup-beam gives a GitHub runner and `apt install
+# elixir` a desk.
 #
-#   --targets=a,b     the ELF targets to build (default: all but fit.elf)
-#   --fit             also fit.elf (cloth-fit: the org forks, ~40 min)
+#   --targets=a,b     the ELF targets to build (default: all)
 #   --no-elfs         skip the cross-build (use the committed ELFs)
 #   --no-host         skip the host harnesses
 #   --gates=a,b       headless gates to run: load,crossings (default: load)
@@ -22,11 +22,10 @@ defmodule Build do
   @root Path.expand("..", __DIR__)
   # The stage code is in sibling checkouts of the goal manifest (contract-manifest-taskweft).
   @weft System.get_env("WEFT_ROOT") || Path.expand("../..", @root)
-  @emit_repos ~w(2-contract/ggml-rd 2-contract/lbfgsb 2-contract/anny-kernels 3-interactor/drape
-                 3-interactor/curvenet 3-interactor/garment-fit 3-interactor/cage 3-interactor/headfit)
+  @emit_repos ~w(2-contract/ggml-rd 3-interactor/curvenet)
   @sysroot_repo "https://github.com/V-Sekai-fire/interactor-mujoco-sandbox-demo"
   @sysroot_sub "third_party/riscv64-sysroot"
-  @elfs ~w(dress_on drape curvenet probes ggml_test rd_worker rfdetr_seg motion lasso)
+  @elfs ~w(dress_on curvenet probes ggml_test lasso)
 
   def main(argv) do
     opts = parse(argv)
@@ -49,13 +48,11 @@ defmodule Build do
   defp parse(argv) do
     {kv, _, _} =
       OptionParser.parse(argv,
-        switches: [targets: :string, fit: :boolean, no_elfs: :boolean, no_host: :boolean,
+        switches: [targets: :string, no_elfs: :boolean, no_host: :boolean,
                    gates: :string, sysroot: :string, jobs: :integer])
     targets = if kv[:targets], do: String.split(kv[:targets], ","), else: @elfs
-    targets = if kv[:fit], do: targets ++ ["fit"], else: targets
     %{
       targets: targets,
-      fit: kv[:fit] || false,
       elfs: !kv[:no_elfs],
       host: !kv[:no_host],
       gates: String.split(kv[:gates] || "load", ",", trim: true),
@@ -72,7 +69,6 @@ defmodule Build do
     unless System.get_env("SPIRV_VAL"), do: need("spirv-val")
     {targets, 0} = System.cmd("clang++", ["--print-targets"])
     unless targets =~ "riscv64", do: fail("clang++ has no riscv64 target")
-    if opts.fit, do: need("pixi")
     say("tools: ok (#{opts.jobs} jobs)")
   end
 
@@ -99,7 +95,6 @@ defmodule Build do
     env = [
       {"RISCV64_SYSROOT", sysroot},
       {"BUILD_DIR", System.get_env("BUILD_DIR") || Path.join([@root, "build", "rv64"])},
-      {"BUILD_FIT", if(opts.fit, do: "1", else: "0")},
       {"BUILD_TARGETS", Enum.join(opts.targets, " ")},
       {"BUILD_JOBS", to_string(opts.jobs)}
     ]
