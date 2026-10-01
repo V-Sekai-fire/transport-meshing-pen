@@ -27,6 +27,10 @@ window/size/mode=4
 window/size/resizable=false
 window/size/maximize_disabled=true
 window/vsync/vsync_mode=0
+; Under Movie Maker (the "movie" feature) the recording is a vertical 1080x1920 short in a window.
+window/size/viewport_width.movie=1080
+window/size/viewport_height.movie=1920
+window/size/mode.movie=0
 
 [editor_plugins]
 
