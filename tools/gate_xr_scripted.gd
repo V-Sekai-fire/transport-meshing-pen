@@ -85,6 +85,8 @@ func _process(dt: float) -> bool:
 				return false
 			_main.pipeline.state_changed.connect(func(st: String, rec: Dictionary): _say("STATE %s %s" % [st, str(rec.get("note", rec.get("reason", "")))]))
 			var o := {"pen": _arg("pen", "scripted"), "allow_fixture": "infer,rig", "stop_after": "MESH"}
+			if _arg("pace") != "":
+				o["pace"] = int(_arg("pace"))
 			if _arg("control") == "drop_seam":
 				o["drop_seam"] = true
 			var r: String = _main.dress_on_run_opts(o)
