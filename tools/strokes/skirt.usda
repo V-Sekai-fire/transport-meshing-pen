@@ -1,6 +1,7 @@
 #usda 1.0
 (
     customLayerData = {
+        string expected = '{"cycles":2,"openings":2}'
         string gate = "2263"
         string source = "scripted skirt (pen_source_scripted)"
     }

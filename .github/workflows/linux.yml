@@ -35,3 +35,11 @@ jobs:
             --strokes=tools/strokes/skirt.usda --out=replay.txt --wallclock=240
           echo "--- replay.txt ---"; cat replay.txt
           grep -q "RESULT: PASS" replay.txt
+      - name: The replay gate's control (drop_seam must FAIL at MESH)
+        run: |
+          if timeout 300 "$GODOT" --headless --path . --xr-mode off --script tools/gate_replay.gd -- \
+            --strokes=tools/strokes/skirt.usda --control=drop_seam --out=drop.txt --wallclock=240; then
+            echo "the gate passed a skirt with no back seam"; exit 1
+          fi
+          echo "--- drop.txt ---"; cat drop.txt
+          grep -q "RESULT: FAIL (FAILED(MESH:" drop.txt

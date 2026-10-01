@@ -6,6 +6,13 @@
 #       --plan=<plan.json> --out=<results.txt> [--wallclock=600]
 #   python3 tools/replay_oxrsys.py <plan.json>      (started alongside)
 #
+#   godot --headless --path . --xr-mode off --script tools/gate_replay.gd -- \
+#       --strokes=tools/strokes/skirt.usda [--control=drop_seam]
+#
+# --strokes replays saved strokes with no XR and checks them against the
+# layer's expected counts; --control=drop_seam drops seam_back and must FAIL
+# at MESH.
+#
 # The pipeline runs with pen = "xr" and stops after MESH, so every stroke comes
 # from xr-grid's SketchTool on the right controller: OXRSys tracking packet ->
 # OpenXR pose and trigger -> hand.gd -> SketchTool.active -> xr/pen_bridge.gd
@@ -86,8 +93,17 @@ func _process(_dt: float) -> bool:
 			if _frames < 5:
 				return false
 			_main.pipeline.state_changed.connect(func(st: String, _rec: Dictionary): _say("STATE " + st))
-			var rr: String = _main.dress_on_run_opts({"strokes_from": _strokes_file, "allow_fixture": "infer,rig", "stop_after": "MESH"})
-			_say("replay %s: %s" % [_strokes_file.get_file(), rr])
+			var o := {"strokes_from": _strokes_file, "allow_fixture": "infer,rig", "stop_after": "MESH"}
+			match _arg("control"):
+				"":
+					pass
+				"drop_seam":
+					o["drop_seam"] = true
+				_:
+					_finish("FAIL (unknown control %s)" % _arg("control"))
+					return false
+			var rr: String = _main.dress_on_run_opts(o)
+			_say("replay %s control=%s: %s" % [_strokes_file.get_file(), _arg("control", "none"), rr])
 			if not rr.begins_with("STARTED"):
 				_finish("FAIL (replay did not start: %s)" % rr)
 				return false
@@ -98,6 +114,9 @@ func _process(_dt: float) -> bool:
 				_evaluate_file()
 		"wait":
 			if _frames < 5:
+				return false
+			if _arg("control") != "":
+				_finish("FAIL (--control needs --strokes)")
 				return false
 			var w = _main.get_node_or_null("World")
 			if w == null or not w.xr_on:
@@ -166,14 +185,27 @@ func _evaluate_file() -> void:
 	var openings := int(c.get("openings", -1))
 	var sf: Dictionary = p.data.get("strokes_from", {})
 	var planned := int(sf.get("strokes", -1))
-	var exp: Dictionary = sf.get("meta", {}).get("expected", {})
-	var want_cycles := int(exp.get("cycles", FULL_SKIRT_CYCLES))
-	var want_openings := int(exp.get("openings", 2))
-	var src := "meta.expected" if not exp.is_empty() else "fallback %d/%d" % [FULL_SKIRT_CYCLES, 2]
-	_say("replay: strokes %d (planned %d) cycles %d (want %d) openings %d (want %d), state %s, expected from %s" % [
-			strokes, planned, cycles, want_cycles, openings, want_openings, p.state, src])
-	var ok: bool = p.state == "DONE" and strokes == planned and cycles == want_cycles and openings == want_openings
-	_finish("PASS" if ok else "FAIL")
+	var exp := _expected(sf.get("meta", {}))
+	_say("replay: strokes %d (planned %d) cycles %d openings %d, expected %s, state %s" % [strokes, planned, cycles,
+			openings, JSON.stringify(exp) if not exp.is_empty() else "none", p.status()])
+	if p.state != "DONE":
+		_finish("FAIL (%s)" % p.status())
+		return
+	if exp.is_empty():
+		_finish("FAIL (%s has no readable expected in its customLayerData)" % _strokes_file.get_file())
+		return
+	var ok: bool = strokes == planned and cycles == int(exp.cycles) and openings == int(exp.openings)
+	_finish("PASS" if ok else "FAIL (counts differ from expected)")
+
+# The layer's expected counts. usd.elf hands every customLayerData value back
+# as text, so it is JSON; {} when missing, unreadable, or without both counts.
+static func _expected(meta: Dictionary) -> Dictionary:
+	var e = meta.get("expected", null)
+	if typeof(e) == TYPE_STRING:
+		e = JSON.parse_string(e)
+	if typeof(e) != TYPE_DICTIONARY or not (e.has("cycles") and e.has("openings")):
+		return {}
+	return e
 
 func _finish(verdict: String) -> void:
 	_say("RESULT: " + verdict)

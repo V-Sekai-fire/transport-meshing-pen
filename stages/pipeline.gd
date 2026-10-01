@@ -58,7 +58,8 @@ const DEFAULTS := {
 	"allow_fixture": [],       # stage keys, or one comma-separated String
 	"force_fixture": [],       # stages run as their fixture even when present (to reach what follows them)
 	"pen": "scripted",        # scripted | xr
-	"drop_seam": false,       # control: the back seam is not drawn -> FAILED(MESH)
+	"drop_seam": false,       # control: the back seam is not drawn, or seam_back is dropped from strokes_from
+	                          # -> FAILED(MESH)
 	"closed_rings": false,
 	"no_boundary": false,     # control: the rings are ordinary strokes, so their caps are patched too
 	"mesh_edge": 0.03,        # curvenet mesh_build target_edge_length (m); 0 = no remesh
@@ -292,9 +293,15 @@ func _author(first: bool) -> void:
 			if saved.has("error"):
 				_fail("strokes_from %s: %s" % [opts.strokes_from, saved.error])
 				return
-			data.strokes_from = {"path": opts.strokes_from, "strokes": saved.strokes.size(), "meta": saved.meta}
-			events = StrokesUsd.events(saved.strokes)
-			strokes_ready.emit(saved.strokes)
+			var strokes: Array = saved.strokes
+			if opts.drop_seam:
+				strokes = strokes.filter(func(s: Dictionary) -> bool: return str(s.name) != "seam_back")
+				if strokes.size() != saved.strokes.size() - 1:
+					_fail("drop_seam: %s has no stroke seam_back" % opts.strokes_from)
+					return
+			data.strokes_from = {"path": opts.strokes_from, "strokes": strokes.size(), "meta": saved.meta}
+			events = StrokesUsd.events(strokes)
+			strokes_ready.emit(strokes)
 		else:
 			var src := PenSource.make(data.body_v, data.joints, {"drop_seam": opts.drop_seam,
 					"closed_rings": opts.closed_rings, "no_boundary": opts.no_boundary})
