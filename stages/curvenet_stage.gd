@@ -1,7 +1,8 @@
 # curvenet_stage -- curvenet.elf (Cut 4): Cassie's pen -> curvenet -> mesh.
 # The pipeline's AUTHOR state feeds it pen_begin_at / pen_point_at / pen_end_raw in the
-# body-local frame; MESH calls mesh_build and reads the welded mesh and its
-# boundary loops (util/mesh_wire.gd's format). CPU only.
+# body-local frame; MESH calls mesh_build and reads the welded mesh, closed into a
+# shell, its boundary loops and the drawn surface's rims (util/mesh_wire.gd's format).
+# CPU only.
 #
 # The MCP wrappers at the end are cut-4's main.gd ones (same names, same
 # defaults); main.gd delegates to each (rule 8). The pipeline calls are separate
@@ -11,7 +12,7 @@ extends "res://stages/stage_base.gd"
 const MeshWire := preload("res://util/mesh_wire.gd")
 const REQUIRED := ["cn_reset", "cn_set_param", "cn_set_body", "pen_begin", "pen_point", "pen_end", "pen_end_with_crossings", "patch_count",
 		"curvenet_build", "curvenet_curves", "curvenet_knots", "mesh_build", "mesh_vertices", "mesh_indices",
-		"mesh_boundary_loops"]
+		"mesh_boundary_loops", "mesh_rims"]
 
 func _ready() -> void:
 	stage_name = "curvenet"
@@ -72,9 +73,12 @@ func mesh_arrays() -> Dictionary:
 	var v = call_now("mesh_vertices")
 	var f = call_now("mesh_indices")
 	var l = call_now("mesh_boundary_loops")
-	if typeof(v) != TYPE_PACKED_FLOAT32_ARRAY or typeof(f) != TYPE_PACKED_INT32_ARRAY or typeof(l) != TYPE_PACKED_INT32_ARRAY:
-		return {"error": "mesh arrays: %s / %s / %s" % [type_string(typeof(v)), type_string(typeof(f)), type_string(typeof(l))]}
-	return {"vertices": v, "triangles": f, "loops": MeshWire.loops(l)}
+	var r = call_now("mesh_rims")
+	if typeof(v) != TYPE_PACKED_FLOAT32_ARRAY or typeof(f) != TYPE_PACKED_INT32_ARRAY or typeof(l) != TYPE_PACKED_INT32_ARRAY \
+			or typeof(r) != TYPE_PACKED_INT32_ARRAY:
+		return {"error": "mesh arrays: %s / %s / %s / %s" % [type_string(typeof(v)), type_string(typeof(f)),
+				type_string(typeof(l)), type_string(typeof(r))]}
+	return {"vertices": v, "triangles": f, "loops": MeshWire.loops(l), "rims": MeshWire.loops(r)}
 
 # --- MCP wrappers (cut-4's main.gd, moved here unchanged; rule 8) ---------------------
 # Meshes, curves and knots cross as packed arrays in util/mesh_wire.gd's

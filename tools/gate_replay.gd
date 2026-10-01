@@ -172,10 +172,11 @@ func _evaluate() -> void:
 	var strokes := int(c.get("strokes", -1))
 	var cycles := int(c.get("cycles", -1))
 	var openings := int(c.get("openings", -1))
-	_say("pen: strokes %d (plan %d) cycles %d openings %d, state %s, bridge strokes_sent %d" % [strokes, _strokes.size(),
-			cycles, openings, p.state, int(_main.get_node("World/PenBridge").strokes_sent) if _main.has_node("World/PenBridge") else -1])
-	var ok := strokes == _strokes.size() and cycles == FULL_SKIRT_CYCLES and openings == 2
-	_finish("PASS" if ok else "FAIL")
+	_say("pen: strokes %d (plan %d) cycles %d openings %d, state %s, bridge strokes_sent %d; %s" % [strokes, _strokes.size(),
+			cycles, openings, p.state, int(_main.get_node("World/PenBridge").strokes_sent) if _main.has_node("World/PenBridge") else -1,
+			_mesh_line(p)])
+	var ok: bool = p.state == "DONE" and strokes == _strokes.size() and cycles == FULL_SKIRT_CYCLES and openings == 2
+	_finish("PASS" if ok else "FAIL (%s)" % p.status())
 
 func _evaluate_file() -> void:
 	var p = _main.pipeline
@@ -186,8 +187,8 @@ func _evaluate_file() -> void:
 	var sf: Dictionary = p.data.get("strokes_from", {})
 	var planned := int(sf.get("strokes", -1))
 	var exp := _expected(sf.get("meta", {}))
-	_say("replay: strokes %d (planned %d) cycles %d openings %d, expected %s, state %s" % [strokes, planned, cycles,
-			openings, JSON.stringify(exp) if not exp.is_empty() else "none", p.status()])
+	_say("replay: strokes %d (planned %d) cycles %d openings %d, expected %s, state %s; %s" % [strokes, planned, cycles,
+			openings, JSON.stringify(exp) if not exp.is_empty() else "none", p.status(), _mesh_line(p)])
 	if p.state != "DONE":
 		_finish("FAIL (%s)" % p.status())
 		return
@@ -196,6 +197,12 @@ func _evaluate_file() -> void:
 		return
 	var ok: bool = strokes == planned and cycles == int(exp.cycles) and openings == int(exp.openings)
 	_finish("PASS" if ok else "FAIL (counts differ from expected)")
+
+# What MESH measured of the garment shell.
+static func _mesh_line(p) -> String:
+	var m: Dictionary = p.data.get("mesh", {})
+	return "mesh %s v %s f, %s boundary loops, %s rims, %s components" % [str(m.get("vertices", -1)),
+			str(m.get("triangles", -1)), str(m.get("loops", -1)), str(m.get("rims", -1)), str(m.get("components", -1))]
 
 # The layer's expected counts. usd.elf hands every customLayerData value back
 # as text, so it is JSON; {} when missing, unreadable, or without both counts.
