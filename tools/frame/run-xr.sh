@@ -1,8 +1,9 @@
 #!/bin/bash
 # Run the Windows double build of the pen scene through the compat layer, from SSH.
-#   run-xr.sh <tag> xr|hidden|flat [driver args...]
+#   run-xr.sh <tag> xr|hidden|flat|live [driver args...]
 # xr: --xr-mode on, expect XR. hidden: the same with XR_RUNTIME_JSON at a missing
 # file, still expecting XR, so it must FAIL. flat: --xr-mode off, expect flat.
+# live: XR with a person drawing on the controllers (--pen=xr), WALL 1800 s.
 # The compat layer's steam.exe writes the VR registry key wineopenxr reads only
 # for a game process, which it takes SteamGameId to mean; NOSGI=1 leaves it unset.
 # The compat layer is proton-xrfix.sh's copy and its prefix; stock Proton exits 3 here.
@@ -23,6 +24,7 @@ xrmode=on; expect=xr
 case $mode in
   hidden) export XR_RUNTIME_JSON='C:\no-such-runtime\hidden.json' ;;
   flat) xrmode=off; expect=flat ;;
+  live) WALL=${WALL:-1800}; set -- --pen=xr --wallclock=$((WALL - 30)) "$@" ;;
 esac
 off=$(stat -c %s $V); offs=$(stat -c %s $S)
 cd $R/pen

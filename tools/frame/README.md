@@ -10,8 +10,9 @@ with its prefix at `~/rfd2287/compat-xrfix`, and they write logs to `~/rfd2287/l
   `SHA256SUMS`, and `~/rfd2287/PUSHED` naming all three. A pen release tag pushes that release.
 - `proton-xrfix.sh`, run on the headset: makes `proton-xrfix` from stock Proton 11.0 (ARM64),
   `proton-11.0-2c-arm64`, by its one-byte `win32u.so` patch, refusing any other stock build.
-- `run-xr.sh <tag> xr|hidden|flat`: the scripted-pen gate in headset mode; `hidden` and `flat`
-  are its negative controls.
+- `run-xr.sh <tag> xr|hidden|flat|live`: the scripted-pen gate in headset mode; `hidden` and
+  `flat` are its negative controls. `live` is a person drawing with the controllers, judged on
+  the skirt it closes rather than the scripted stroke count.
 - `still.sh <out.png>` and `clip.sh <out.avi> <seconds>`: capture the compositor's mirror.
 - `run-pen-openvr.sh` and `run-pen-movie.sh`: the pen with the companion pens, live or to a movie.
 - `caffeine-setup.sh`: installs `~/rfd2287/caffeine.sh on|off|status`, a sleep inhibitor, so a
