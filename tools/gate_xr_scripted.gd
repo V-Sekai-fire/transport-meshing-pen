@@ -24,6 +24,7 @@ var _main: Node = null
 var _phase := "boot"
 var _frames := 0
 var _hold_t0 := 0
+var _hold_game := 0.0
 var _dts: Array = []
 var _verdict := ""
 var _xr = null
@@ -101,17 +102,30 @@ func _process(dt: float) -> bool:
 				_verdict = _evaluate()
 				_phase = "hold"
 				_hold_t0 = Time.get_ticks_msec()
-				_say("holding %.0f s" % _hold_s)
+				_say("holding %.0f s of %s time" % [_hold_s, "movie" if _movie() else "wall-clock"])
 				if _arg("face") != "":
 					_face_body(float(_arg("face")))
 		"hold":
 			_dts.append(dt)
+			_hold_game += dt
 			if _dts.size() == 30:
 				_save_png()
-			if (Time.get_ticks_msec() - _hold_t0) / 1000.0 >= _hold_s and _dts.size() >= 30:
+			if _held() and _dts.size() >= 30:
 				_frame_times()
 				_finish(_verdict)
 	return false
+
+
+# Under Movie Maker every frame advances a fixed 1/fps of game time however long it takes to
+# render, so the hold counts game time there and --hold sets the clip's length.
+func _movie() -> bool:
+	return Engine.get_write_movie_path() != ""
+
+
+func _held() -> bool:
+	if _movie():
+		return _hold_game + 1e-6 >= _hold_s
+	return (Time.get_ticks_msec() - _hold_t0) / 1000.0 >= _hold_s
 
 func _evaluate() -> String:
 	var p = _main.pipeline
