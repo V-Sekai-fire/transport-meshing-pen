@@ -151,7 +151,7 @@ func _process(_dt: float) -> bool:
 
 func _write_plan(offset: Vector3) -> void:
 	var origin: Node3D = _main.get_node("World/XROrigin3D")
-	var body: Node3D = _main.get_node("World/Body")
+	var body: Node3D = _main.get_node("World/XROrigin3D/Canvas/Body")
 	var to_origin := origin.global_transform.affine_inverse() * body.global_transform
 	var plan := {"calib": [CALIB.x, CALIB.y, CALIB.z], "strokes": []}
 	for s in _strokes:

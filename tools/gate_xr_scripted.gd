@@ -143,8 +143,8 @@ func _log_sandboxes(n: Node) -> void:
 func _face_body(d: float) -> void:
 	var w = _main.get_node_or_null("World")
 	var cam: Node3D = w.get_node_or_null("XROrigin3D/XRCamera3D") if w != null else null
-	var body: Node3D = w.get_node_or_null("Body") if w != null else null
-	var g: MeshInstance3D = w.get_node_or_null("Body/Garment") if w != null else null
+	var body: Node3D = w.get_node_or_null("XROrigin3D/Canvas/Body") if w != null else null
+	var g: MeshInstance3D = w.get_node_or_null("XROrigin3D/Canvas/Body/Garment") if w != null else null
 	if cam == null or body == null or g == null or g.mesh == null:
 		_say("face: FAIL (no camera, body or garment mesh)")
 		return

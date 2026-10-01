@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://addons/procedural_3d_grid/core/simple_sketcher/sketch_tool.gd" id="5_tool"]
 [ext_resource type="Script" path="res://xr/companion_pens.gd" id="6_companions"]
 [ext_resource type="Shader" path="res://addons/procedural_3d_grid/core/simple_sketcher/simple_sketch.gdshader" id="7_strokes"]
+[ext_resource type="Script" path="res://addons/procedural_3d_grid/core/xr_pinch.gd" id="9_pinch"]
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_strokes"]
 
@@ -23,9 +24,6 @@ script = ExtResource("1_main")
 
 [node name="World" type="Node3D" parent="."]
 script = ExtResource("2_world")
-
-[node name="Station" parent="World" instance=ExtResource("8_station")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 11.4)
 
 [node name="FlatCamera" type="Camera3D" parent="World"]
 transform = Transform3D(1, 0, 0, 0, 0.994522, 0.104528, 0, -0.104528, 0.994522, 0, 1.05, 2.4)
@@ -43,7 +41,7 @@ script = ExtResource("4_hand")
 
 [node name="SketchTool" type="Node3D" parent="World/XROrigin3D/hand_left"]
 script = ExtResource("5_tool")
-CANVAS = NodePath("../../../Body")
+CANVAS = NodePath("../../Canvas/Body")
 color = Color(0.980392, 0.827451, 0.0745098, 1)
 
 [node name="Tip" type="MeshInstance3D" parent="World/XROrigin3D/hand_left"]
@@ -55,28 +53,37 @@ script = ExtResource("4_hand")
 
 [node name="SketchTool" type="Node3D" parent="World/XROrigin3D/hand_right"]
 script = ExtResource("5_tool")
-CANVAS = NodePath("../../../Body")
+CANVAS = NodePath("../../Canvas/Body")
 color = Color(0.0745098, 0.101961, 0.643137, 1)
 
 [node name="Tip" type="MeshInstance3D" parent="World/XROrigin3D/hand_right"]
 mesh = SubResource("Sphere_tip")
 
-[node name="Body" type="Node3D" parent="World"]
+[node name="Canvas" type="Node3D" parent="World/XROrigin3D" node_paths=PackedStringArray("hand_left", "hand_right")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.2)
+script = ExtResource("9_pinch")
+hand_left = NodePath("../hand_left")
+hand_right = NodePath("../hand_right")
 
-[node name="strokes" type="MeshInstance3D" parent="World/Body"]
+[node name="Station" parent="World/XROrigin3D/Canvas" instance=ExtResource("8_station")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 11.4)
+
+[node name="Body" type="Node3D" parent="World/XROrigin3D/Canvas"]
+
+[node name="strokes" type="MeshInstance3D" parent="World/XROrigin3D/Canvas/Body"]
 material_override = SubResource("Mat_strokes")
 mesh = SubResource("ArrayMesh_strokes")
 
-[node name="BodyMesh" type="MeshInstance3D" parent="World/Body"]
+[node name="BodyMesh" type="MeshInstance3D" parent="World/XROrigin3D/Canvas/Body"]
 
-[node name="Garment" type="MeshInstance3D" parent="World/Body"]
+[node name="Garment" type="MeshInstance3D" parent="World/XROrigin3D/Canvas/Body"]
 
-[node name="Joints" type="Node3D" parent="World/Body"]
+[node name="Joints" type="Node3D" parent="World/XROrigin3D/Canvas/Body"]
 
 [node name="PenBridge" type="Node" parent="World"]
 script = ExtResource("3_bridge")
 tools = Array[NodePath]([NodePath("../XROrigin3D/hand_left/SketchTool"), NodePath("../XROrigin3D/hand_right/SketchTool")])
-body_path = NodePath("../Body")
+body_path = NodePath("../XROrigin3D/Canvas/Body")
 
 [node name="CompanionPens" type="Node" parent="World"]
 script = ExtResource("6_companions")

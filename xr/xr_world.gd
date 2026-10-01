@@ -15,7 +15,7 @@ var xr_on := false
 var xr_runtime := ""
 var main = null
 
-@onready var body: Node3D = $Body
+@onready var body: Node3D = $XROrigin3D/Canvas/Body
 
 func _ready() -> void:
 	var xr := _pick_xr()
