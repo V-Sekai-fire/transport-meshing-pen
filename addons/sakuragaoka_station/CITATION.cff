@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: If you use this addon, cite the Godot port of Sakuragaoka Station and its original.
+title: Sakuragaoka Station, Godot port (vendored)
+abstract: >-
+  The world modules of the three.js Sakuragaoka Station ported to GDScript, checked against the
+  original's oracle and realized with CSG and godot-vrm's MToon, vendored by
+  tools/vendor_station.sh with the MToon shaders beside it.
+authors:
+  - name: Sakuragaoka Station contributors
+  - name: V-Sekai-fire
+repository-code: https://github.com/V-Sekai-fire/entities-sakuragaoka-station
+commit: fb04f388681f3151a74118b03f28a8a3fd06c58c
+license: MIT
+references:
+  - type: software
+    title: Sakuragaoka Station (three.js)
+    authors:
+      - name: Sakuragaoka Station contributors
+    repository-code: https://github.com/Kenton-GMI/sakuragaoka-station
+    commit: 4112f57208b7e29998344ca71fef74202c2b2bdd
+    license: MIT
