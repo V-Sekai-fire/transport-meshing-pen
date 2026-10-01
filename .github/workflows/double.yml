@@ -50,3 +50,15 @@ jobs:
           fi
           echo "--- drop.txt ---"; cat drop.txt
           grep -q "RESULT: FAIL (FAILED(MESH:" drop.txt
+      - name: World grab gate (two grips carry and scale the station)
+        run: |
+          timeout 300 "$GODOT" --headless --fixed-fps 60 --path . --script tools/gate_world_grab.gd | tee grab.txt
+          grep -q "RESULT: PASS" grab.txt
+      - name: The world grab gate's control (cold debounce must FAIL)
+        run: |
+          if timeout 300 "$GODOT" --headless --fixed-fps 60 --path . --script tools/gate_world_grab.gd -- \
+            --control=cold_debounce > grab-cold.txt 2>&1; then
+            cat grab-cold.txt; echo "the gate passed with the first grab swallowed"; exit 1
+          fi
+          cat grab-cold.txt
+          grep -q "first two-hand grab, 0.0000 m" grab-cold.txt

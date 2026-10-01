@@ -49,6 +49,11 @@ var last_hand_right_grab_state: bool = false
 @export var linear_dampening: float = 0.45
 @export var angular_dampening: float = 0.45
 
+func _ready() -> void:
+	# Warm, as after a hand's first release, so a hand's first grab is not swallowed.
+	hand_left_grab_debounce_timer = debounce_duration
+	hand_right_grab_debounce_timer = debounce_duration
+
 func _process(delta_time: float) -> void:
 	var hand_left_grab: float = hand_left.get_float("grip")
 	var hand_right_grab: float = hand_right.get_float("grip")
