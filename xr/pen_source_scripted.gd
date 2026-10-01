@@ -102,7 +102,7 @@ static func make(body_v: PackedFloat32Array, joints: PackedFloat32Array, opts: D
 		"clearance_before_grow": c0,
 		"grow": grow,
 		"expected": {"cycles": 2, "openings": 2, "patches": 2, "knots": 4, "knot_degree": 3, "edges": 6,
-				"mesh_loops": 2, "mesh_components": 1},
+				"mesh_loops": 0, "mesh_rims": 2, "mesh_components": 1},
 		"error": "",
 	}
 

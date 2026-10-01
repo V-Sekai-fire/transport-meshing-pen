@@ -5,7 +5,7 @@
 # INFER   body mesh (infer.elf; today only the FoxGirl fixture)
 # RIG     15-joint skeleton (infer.elf's rig; today FoxGirl's own, via skeleton15)
 # AUTHOR  pen events -> curvenet pen_begin/point/end, then curvenet_build
-# MESH    mesh_build on curvenet's worker thread -> garment + boundary loops
+# MESH    mesh_build on curvenet's worker thread -> garment shell + its rims
 #
 # A stage whose ELF is missing (or too old to have its API) FAILs the run as
 # "<stage> missing (...)" unless opts.allow_fixture names it; then its fixture
@@ -282,8 +282,9 @@ func _author(first: bool) -> void:
 			if g.has("error"):
 				_fail(g.error)
 				return
+			var fl: Array = MeshTopo.boundary_loops(g.triangles)
 			data.garment = {"vertices": g.vertices, "triangles": g.triangles, "source_joints": g.source_joints,
-					"loops": MeshTopo.boundary_loops(g.triangles)}
+					"loops": fl, "rims": fl}
 			data.counts = {"fixture": true}
 			_goto("MESH", g.source)
 			return
@@ -430,25 +431,28 @@ func _mesh(first: bool) -> void:
 	if a.has("error"):
 		_fail(a.error)
 		return
-	_mesh_done({"vertices": a.vertices, "triangles": a.triangles, "loops": a.loops,
+	_mesh_done({"vertices": a.vertices, "triangles": a.triangles, "loops": a.loops, "rims": a.rims,
 			"source_joints": data.joints}, r)
 
 func _mesh_done(g: Dictionary, note: String) -> void:
 	var nv: int = g.vertices.size() / 3
 	var nf: int = g.triangles.size() / 3
 	var comps := MeshTopo.components(nv, g.triangles)
-	var loops: Array = g.loops
+	# Counted here from the triangles, not taken from the guest's answer.
+	var loops: Array = MeshTopo.boundary_loops(g.triangles)
+	var rims: Array = g.get("rims", [])
 	data.garment = g
 	data.mesh = data.get("mesh", {})
-	data.mesh.merge({"vertices": nv, "triangles": nf, "loops": loops.size(), "components": comps,
+	data.mesh.merge({"vertices": nv, "triangles": nf, "loops": loops.size(), "rims": rims.size(), "components": comps,
 			"finite": MeshTopo.all_finite(g.vertices)})
 	garment_ready.emit(g.vertices, g.triangles, "mesh")
-	# A skirt is one tube: one component, two boundary loops (waist, hem).
-	if nf == 0 or comps != 1 or loops.size() != 2 or not data.mesh.finite:
-		_fail("not a skirt tube: %d triangles, %d components, %d boundary loops (want >0, 1, 2)%s" % [nf, comps,
-				loops.size(), "" if data.mesh.finite else ", non-finite vertices"])
+	# A skirt is one closed shell, double-sided in its geometry: one component, no boundary
+	# loop, and two rims where the drawn tube was open (waist, hem).
+	if nf == 0 or comps != 1 or loops.size() != 0 or rims.size() != 2 or not data.mesh.finite:
+		_fail("not a closed skirt shell: %d triangles, %d components, %d boundary loops, %d rims (want >0, 1, 0, 2)%s" % [
+				nf, comps, loops.size(), rims.size(), "" if data.mesh.finite else ", non-finite vertices"])
 		return
-	_goto("DONE", "%s | %d v %d f %d loops" % [note, nv, nf, loops.size()])
+	_goto("DONE", "%s | %d v %d f, closed, %d rims" % [note, nv, nf, rims.size()])
 
 # --- helpers ---------------------------------------------------------------------------------
 

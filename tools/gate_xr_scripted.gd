@@ -6,9 +6,9 @@
 #   godot --path . --xr-mode on --script tools/gate_xr_scripted.gd -- --pen=xr --wallclock=1800
 #
 # PASS: the view is what --expect says (XR needs an OpenXR session), and the
-# pen made 6 strokes that close 2 cycles with 2 openings into a skirt tube.
+# pen made 6 strokes that close 2 cycles with 2 openings into a closed skirt shell.
 # --pen=xr is a person drawing with the controllers; any stroke count passes
-# if they close 2 cycles with 2 openings into one tube.
+# if they close 2 cycles with 2 openings into one shell.
 # Controls: --control=drop_seam must FAIL (MESH), and --expect=xr with the
 # runtime hidden must FAIL (flat).
 extends SceneTree
@@ -118,14 +118,16 @@ func _evaluate() -> String:
 	var c: Dictionary = p.data.get("counts", {})
 	var m: Dictionary = p.data.get("mesh", {})
 	var bridge = _main.get_node_or_null("World/PenBridge")
-	_say("pen: state %s, strokes %d, cycles %d, openings %d, patches %d, bridge strokes_sent %d, mesh %s v %s f %s loops, %s" % [
+	_say("pen: state %s, strokes %d, cycles %d, openings %d, patches %d, bridge strokes_sent %d, mesh %s v %s f %s loops %s rims, %s" % [
 			p.status(), int(c.get("strokes", -1)), int(c.get("cycles", -1)), int(c.get("openings", -1)),
 			int(c.get("patches", -1)), int(bridge.strokes_sent) if bridge != null else -1,
-			str(m.get("vertices", -1)), str(m.get("triangles", -1)), str(m.get("loops", -1)), str(m.get("mesh_build", ""))])
+			str(m.get("vertices", -1)), str(m.get("triangles", -1)), str(m.get("loops", -1)), str(m.get("rims", -1)),
+			str(m.get("mesh_build", ""))])
 	_log_sandboxes(_main)
 	var strokes_ok: bool = int(c.get("strokes", -1)) == 6 or (_arg("pen", "scripted") == "xr" and int(c.get("strokes", -1)) > 0)
 	var ok: bool = p.state == "DONE" and strokes_ok and int(c.get("cycles", -1)) == 2 \
-			and int(c.get("openings", -1)) == 2 and int(m.get("loops", -1)) == 2 and int(m.get("components", -1)) == 1
+			and int(c.get("openings", -1)) == 2 and int(m.get("loops", -1)) == 0 and int(m.get("rims", -1)) == 2 \
+			and int(m.get("components", -1)) == 1
 	return "PASS" if ok else "FAIL (%s)" % p.status()
 
 func _log_sandboxes(n: Node) -> void:
