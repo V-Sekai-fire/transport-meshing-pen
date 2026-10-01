@@ -5,15 +5,16 @@
 # file, still expecting XR, so it must FAIL. flat: --xr-mode off, expect flat.
 # The compat layer's steam.exe writes the VR registry key wineopenxr reads only
 # for a game process, which it takes SteamGameId to mean; NOSGI=1 leaves it unset.
-# PROTON_DIR/COMPAT pick another compat layer copy and prefix; DRIVER the renderer.
+# The compat layer is proton-xrfix.sh's copy and its prefix; stock Proton exits 3 here.
+# PROTON_DIR/COMPAT pick another copy and prefix; DRIVER the renderer.
 tag=$1; mode=$2; shift 2
 R=$HOME/rfd2287
 C=$HOME/.local/share/Steam/steamapps/common
-P=${PROTON_DIR:-$C/Proton 11.0 (ARM64)}
+P=${PROTON_DIR:-$R/proton-xrfix}
 V=$HOME/.local/share/Steam/logs/vrcompositor.txt
 S=$HOME/.local/share/Steam/logs/vrserver.txt
 export XDG_RUNTIME_DIR=/run/user/1000 DISPLAY=:1 WAYLAND_DISPLAY=gamescope-0
-export STEAM_COMPAT_CLIENT_INSTALL_PATH=$HOME/.local/share/Steam STEAM_COMPAT_DATA_PATH=${COMPAT:-$R/compat}
+export STEAM_COMPAT_CLIENT_INSTALL_PATH=$HOME/.local/share/Steam STEAM_COMPAT_DATA_PATH=${COMPAT:-$R/compat-xrfix}
 mkdir -p "$STEAM_COMPAT_DATA_PATH"
 unset PROTON_LOG SteamGameId SteamAppId XR_RUNTIME_JSON
 if [ "${NOSGI:-0}" != 1 ]; then export SteamGameId=${SGI:-9990002287} SteamAppId=${SGI:-9990002287}; fi
