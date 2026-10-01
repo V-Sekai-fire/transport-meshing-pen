@@ -1,5 +1,5 @@
 # xr_world -- the visible half of xr_main.tscn: picks XR or flat, shows the
-# pipeline's body, strokes and garment (mesh, fit, drape) under Body, and hands
+# pipeline's body, strokes and garment under Body, and hands
 # the pen bridge to the pipeline. Main (the scene root, main.gd) calls
 # attach(main) once its stages exist (children are ready before parents).
 #
@@ -106,9 +106,7 @@ func _on_skeleton(joints: PackedFloat32Array, _bones: PackedInt32Array) -> void:
 		s.position = Vector3(joints[3 * i], joints[3 * i + 1], joints[3 * i + 2])
 		holder.add_child(s)
 
-# label: mesh | fit | drape. The newest one is shown.
-func _on_garment(v: PackedFloat32Array, f: PackedInt32Array, label: String) -> void:
+func _on_garment(v: PackedFloat32Array, f: PackedInt32Array, _label: String) -> void:
 	var mi: MeshInstance3D = body.get_node("Garment")
 	mi.mesh = _shaded(v, f)
-	var col := {"mesh": Color(0.3, 0.5, 0.9), "fit": Color(0.2, 0.7, 0.4), "drape": Color(0.8, 0.3, 0.6)}
-	mi.material_override = _mat(col.get(label, Color.WHITE))
+	mi.material_override = _mat(Color(0.3, 0.5, 0.9))

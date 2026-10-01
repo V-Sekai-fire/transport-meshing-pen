@@ -9,17 +9,14 @@ abstract: >-
   assets/avatars/FoxGirl/avatar.obj -> avatar.obj,
   assets/avatars/FoxGirl/skeleton.obj -> skeleton.obj,
   assets/garments/LCL_Skirt_DressEvening_003/garment.obj -> garment.obj,
-  assets/garments/LCL_Skirt_DressEvening_003/skeleton.obj -> garment_skeleton.obj,
-  assets/garments/LCL_Skirt_DressEvening_003/no-fit.txt -> no-fit.txt (unchanged).
+  assets/garments/LCL_Skirt_DressEvening_003/skeleton.obj -> garment_skeleton.obj.
   Local adaptations, all made by tools/fixtures/foxgirl_convert.py: Blender's
   frame (+Z up) becomes Godot's, (x, y, z) -> (x, z, -y); every file is
   scaled by 0.283917636 so the avatar is 1.7 m tall, then shifted by
-  y -= 0.281784847 so its lowest vertex is on y = 0 (one map for all five,
+  y -= 0.281784847 so its lowest vertex is on y = 0 (one map for all four,
   so the skirt stays consistent with its own skeleton); only v, f (position
-  index only) and l records are kept. fit_config.json is cut-6's
-  tools/native/foxgirl_oracle.json (the upstream foxgirl_skirt setup) with
-  the *_path keys removed. The skeletons are cloth-fit's 15-joint layout, which
-  util/skeleton15.gd maps any rig onto (identity for these two).
+  index only) and l records are kept. The skeletons are cloth-fit's 15-joint
+  layout, which util/skeleton15.gd maps any rig onto (identity for these two).
   The .gdignore beside this directory keeps Godot's OBJ importer off these
   files (it refuses the line-only skeletons); they are read as text by
   util/obj_io.gd.

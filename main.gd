@@ -4,9 +4,7 @@
 # makes them the way Gate 0F says), and the pipeline that composes them.
 #
 #   DressOn   stages/dress_on_stage.gd   dress_on.elf (Stage 1) + probes.elf (Gate 0F) + rd_worker.elf (6G.1)
-#   Drape     stages/drape_stage.gd      drape.elf (Stage 2 AVBD jobs, Cut 5 drape)
 #   Curvenet  stages/curvenet_stage.gd   curvenet.elf (Cut 4)
-#   Fit       stages/fit_stage.gd        fit.elf (Cut 6)
 #   Infer     stages/infer_stage.gd      infer.elf (Cut 4b / 7); fixtures until then
 #   Ggml      stages/ggml_stage.gd       ggml_test.elf (Cut 3: ggml-rd, Gate 3), made on first use
 #   Usd       stages/usd_stage.gd        usd.elf (Cut U: a .usdz package -> mesh + material arrays)
@@ -18,9 +16,7 @@
 extends Node
 
 const DressOnStage := preload("res://stages/dress_on_stage.gd")
-const DrapeStage := preload("res://stages/drape_stage.gd")
 const CurvenetStage := preload("res://stages/curvenet_stage.gd")
-const FitStage := preload("res://stages/fit_stage.gd")
 const InferStage := preload("res://stages/infer_stage.gd")
 const GgmlStage := preload("res://stages/ggml_stage.gd")
 const UsdStage := preload("res://stages/usd_stage.gd")
@@ -29,9 +25,7 @@ const StrokesUsd := preload("res://util/strokes_usd.gd")
 const Pipeline := preload("res://stages/pipeline.gd")
 
 var dress_on = null
-var drape = null
 var curvenet = null
-var fit = null
 var infer = null
 var ggml = null
 var usd = null
@@ -40,15 +34,13 @@ var pipeline = null
 
 func _ready() -> void:
 	dress_on = _add(DressOnStage, "DressOn")
-	drape = _add(DrapeStage, "Drape")
 	curvenet = _add(CurvenetStage, "Curvenet")
-	fit = _add(FitStage, "Fit")
 	infer = _add(InferStage, "Infer")
 	ggml = _add(GgmlStage, "Ggml")
 	usd = _add(UsdStage, "Usd")
 	mujoco = _add(MujocoStage, "Mujoco")
 	pipeline = _add(Pipeline, "Pipeline")
-	pipeline.setup({"infer": infer, "curvenet": curvenet, "fit": fit, "drape": drape, "usd": usd, "mujoco": mujoco})
+	pipeline.setup({"infer": infer, "curvenet": curvenet, "usd": usd, "mujoco": mujoco})
 	var world = get_node_or_null("World")
 	if world != null and world.has_method("attach"):
 		world.attach(self)
@@ -71,10 +63,6 @@ func dress_on_run(allow_fixture: String = "infer,rig", pen: String = "scripted")
 # Gate 8's control: the back seam is not drawn; must end FAILED(MESH: ...).
 func dress_on_run_drop_seam(allow_fixture: String = "infer,rig") -> String:
 	return pipeline.start({"allow_fixture": allow_fixture, "drop_seam": true})
-
-# Gate 8's control: CHECK sees one garment vertex pushed inside the body.
-func dress_on_run_push_vertex(allow_fixture: String = "infer,rig") -> String:
-	return pipeline.start({"allow_fixture": allow_fixture, "push_vertex": true})
 
 # Save the strokes drawn in the last run (pen or scripted) as OpenUSD, one
 # BasisCurves per stroke (util/strokes_usd.gd); "" picks user://creations/<utc>.usda.
@@ -127,10 +115,8 @@ func dress_on_pen_boundary(on: bool = true) -> String:
 # Which stages have their ELF (and its API), and why not.
 func dress_on_stages() -> String:
 	var out := PackedStringArray()
-	for s in [infer, curvenet, fit, drape]:
+	for s in [infer, curvenet]:
 		var why: String = s.reason if not s.available() else ""
-		if s == drape and why == "":
-			why = drape.drape_api_missing()
 		out.append("%s: %s" % [s.stage_name, "ok" if why == "" else why])
 	return " | ".join(out)
 
@@ -145,60 +131,6 @@ func rd_bench_quiet(n_dispatch: int = 1, n_submit: int = 1, barrier: bool = true
 func rd_set_probe() -> String: return dress_on.rd_set_probe()
 # kind: ticks|limit|clock|bind|barrier|dispatch|submit|buffer|shader|shader-pba|pipeline|uset|readback|instantiate
 func rd_calls(kind: String = "ticks", n: int = 1000) -> String: return dress_on.rd_calls(kind, n)
-
-# --- Stage 2: the AVBD solver (drape.elf) --------------------------------------------------
-# The one-shot calls are cpu only (rule 4); on rd use the jobs: avbd_job_start
-# then avbd_job_tick once per frame.
-
-func avbd_fixture(backend: String = "cpu") -> String: return drape.avbd_fixture(backend)
-func avbd_bench(backend: String = "cpu", nx: int = 32, ny: int = 32, substeps: int = 5, iters: int = 10) -> String: return drape.avbd_bench(backend, nx, ny, substeps, iters)
-func drape_rd_close() -> String: return drape.drape_rd_close()
-func drape_rd_last_step() -> String: return drape.drape_rd_last_step()
-func rd_rule4() -> String: return drape.rd_rule4()
-func rd_rule4_probe() -> String: return drape.rd_rule4_probe()
-func avbd_job_start(name: String = "fixture", backend: String = "rd") -> String: return drape.avbd_job_start(name, backend)
-func avbd_job_tick() -> String: return drape.avbd_job_tick()
-func avbd_job_names() -> String: return drape.avbd_job_names()
-
-# --- Cut 5: the drape API (drape.elf from cut-5 on; FAIL with the reason before) ----------
-
-func drape_open(backend: String = "auto") -> String: return drape.drape_open(backend)
-func drape_sphere_demo(backend: String = "auto") -> String: return drape.drape_sphere_demo(backend)
-func drape_scene_mesh(positions: PackedFloat32Array = PackedFloat32Array(), triangles: PackedInt32Array = PackedInt32Array(),
-		pins: PackedInt32Array = PackedInt32Array(), material: PackedFloat32Array = PackedFloat32Array()) -> String:
-	return drape.drape_scene_mesh(positions, triangles, pins, material)
-func drape_primitive(kind: String = "clear", params: PackedFloat32Array = PackedFloat32Array()) -> String: return drape.drape_primitive(kind, params)
-func drape_primitive_mesh(positions: PackedFloat32Array = PackedFloat32Array(), triangles: PackedInt32Array = PackedInt32Array(),
-		params: PackedFloat32Array = PackedFloat32Array()) -> String:
-	return drape.drape_primitive_mesh(positions, triangles, params)
-func drape_config(key: String = "iters", value: float = 16.0) -> String: return drape.drape_config(key, value)
-func drape_forward(steps: int = 100) -> String: return drape.drape_forward(steps)
-func drape_fit_set(verts: PackedInt32Array = PackedInt32Array(), params: PackedFloat32Array = PackedFloat32Array(), anchor: PackedInt32Array = PackedInt32Array()) -> String: return drape.drape_fit_set(verts, params, anchor)
-func drape_fit(max_steps: int = 300, tol: float = 0.0005) -> String: return drape.drape_fit(max_steps, tol)
-func drape_sinew_align_test() -> String: return drape.drape_sinew_align_test()
-func drape_target(kind: String = "trajectory", verts: PackedInt32Array = PackedInt32Array(),
-		positions: PackedFloat32Array = PackedFloat32Array(), frame: int = -1) -> String:
-	return drape.drape_target(kind, verts, positions, frame)
-func drape_backward(loss: String = "match_trajectory", mode: String = "unrolled") -> String: return drape.drape_backward(loss, mode)
-func drape_status() -> String: return drape.drape_status()
-func drape_result() -> String: return drape.drape_result()
-func drape_positions() -> PackedFloat32Array: return drape.drape_positions()
-func drape_frame(i: int = 0) -> PackedFloat32Array: return drape.drape_frame(i)
-func drape_faces() -> PackedInt32Array: return drape.drape_faces()
-func drape_job(name: String = "sphere_forward", backend: String = "auto", args: String = "") -> String: return drape.drape_job(name, backend, args)
-func drape_job_result() -> String: return drape.drape_job_result()
-func drape_job_frame(i: int = 0) -> PackedFloat32Array: return drape.drape_job_frame(i)
-func drape_job_names() -> String: return drape.drape_job_names()
-func drape_job_data(key: String = "clear", text: String = "") -> String: return drape.drape_job_data(key, text)
-func drape_optimize(spec: String = "params=mu mode=native", x0: PackedFloat32Array = PackedFloat32Array([0.5]),
-		lb: PackedFloat32Array = PackedFloat32Array([0.01]), ub: PackedFloat32Array = PackedFloat32Array([1.0]),
-		max_iter: int = 10) -> String:
-	return drape.drape_optimize(spec, x0, lb, ub, max_iter)
-func drape_optimize_result() -> String: return drape.drape_optimize_result()
-func lbfgsb_load_oracle() -> String: return drape.lbfgsb_load_oracle()
-# One drape_tick / drape_job_tick by hand (_process ticks every frame anyway).
-func drape_tick() -> String: return drape.drape_tick()
-func drape_job_tick() -> String: return drape.drape_job_tick()
 
 # --- Cut 4: the curvenet stage (curvenet.elf) ---------------------------------------------
 
@@ -223,59 +155,6 @@ func curvenet_build() -> String: return curvenet.curvenet_build()
 func mesh_build(target_edge_length: float = 0.02, weld_eps: float = 1e-5) -> String: return curvenet.mesh_build(target_edge_length, weld_eps)
 func mesh_array_mesh() -> ArrayMesh: return curvenet.mesh_array_mesh()
 func curvenet_extract_demo() -> String: return curvenet.curvenet_extract_demo()
-
-# --- Cut 6: the fit stage (fit.elf) -------------------------------------------------------
-
-func fit_fixture_foxgirl() -> String: return fit.fit_fixture_foxgirl()
-func fit_reset() -> String: return fit.fit_reset()
-func fit_begin() -> String: return fit.fit_begin()
-func fit_step() -> String: return fit.fit_step()
-func fit_run_all() -> String: return fit.fit_run_all()
-func fit_status() -> String: return fit.fit_status()
-func fit_check() -> String: return fit.fit_check()
-func fit_result() -> String: return fit.fit_result()
-func fit_result_vertices() -> Variant: return fit.fit_result_vertices()
-func fit_result_vertices_f64() -> Variant: return fit.fit_result_vertices_f64()
-func fit_preview() -> String: return fit.fit_preview()
-func fit_sdf() -> String: return fit.fit_sdf()
-func fit_probe_io() -> String: return fit.fit_probe_io()
-func fit_probe_ldlt() -> String: return fit.fit_probe_ldlt()
-func fit_probe_exceptions() -> String: return fit.fit_probe_exceptions()
-func fit_probe_io_paths() -> String: return fit.fit_probe_io_paths()
-func fit_probe_ldlt8k() -> String: return fit.fit_probe_ldlt8k()
-func fit_probe_libm() -> String: return fit.fit_probe_libm()
-func fit_probe_stl() -> String: return fit.fit_probe_stl()
-func fit_probe_instret() -> String: return fit.fit_probe_instret()
-func fit_probe_heap() -> String: return fit.fit_probe_heap()
-func fit_push_control() -> String: return fit.fit_push_control()
-func fit_push_flat() -> String: return fit.fit_push_flat()
-func fit_set_skin_weights(weights: PackedFloat32Array = PackedFloat32Array()) -> String: return fit.fit_set_skin_weights(weights)
-# A fresh fit Sandbox with the stage's fit_memory_mib / fit_elf / fit_execution_timeout.
-func fit_configure() -> String: return fit.fit_configure()
-func fit_configure_with(memory_mib: int = 2048, elf: String = "res://fit.elf", execution_timeout: int = -1) -> String:
-	return fit.fit_configure_with(memory_mib, elf, execution_timeout)
-func foxgirl_arrays() -> Dictionary: return fit.foxgirl_arrays()
-# Gate 6 sets these on /root/Main; they live on the fit stage.
-var fit_config_overrides: Dictionary:
-	get:
-		return fit.fit_config_overrides
-	set(value):
-		fit.fit_config_overrides = value
-var fit_memory_mib: int:
-	get:
-		return fit.fit_memory_mib
-	set(value):
-		fit.fit_memory_mib = value
-var fit_execution_timeout: int:
-	get:
-		return fit.fit_execution_timeout
-	set(value):
-		fit.fit_execution_timeout = value
-var fit_elf: String:
-	get:
-		return fit.fit_elf
-	set(value):
-		fit.fit_elf = value
 
 # --- Gate 0F: probes.elf, the sandbox runtime probes ---------------------------------------
 # gate_runtime.gd is the gate; these are the no-argument wrappers, every
