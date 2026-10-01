@@ -33,6 +33,9 @@ var _next_stroke := 0
 var _replay: Array = []
 var _sketch = null
 var strokes_sent := 0
+var _cur: Dictionary = {}
+var _cur_i := 0
+var _cur_k := 0
 var boundary_mode := false
 var _by_prev := false
 
@@ -64,6 +67,10 @@ func _process(_dt: float) -> void:
 		_forward_tools()
 
 func _replay_one() -> void:
+	var pace: int = pipeline.opts.get("pace", 0)
+	if pace > 0:
+		_replay_paced(pace)
+		return
 	if _replay.is_empty():
 		return
 	var st: Dictionary = _replay.pop_front()
@@ -82,6 +89,36 @@ func _replay_one() -> void:
 		_sketch.stroke_end()
 	if _replay.is_empty():
 		pipeline.pen_finish()
+
+# opts.pace > 0: pace points a frame, the ribbon growing with them, so a recording shows the drawing.
+func _replay_paced(pace: int) -> void:
+	if _cur.is_empty():
+		if _replay.is_empty():
+			return
+		_cur = _replay.pop_front()
+		_cur_k = _next_stroke
+		_next_stroke += 1
+		var p0: Vector3 = _cur.points[0]
+		pipeline.pen_event("begin", _cur_k, p0, 0.5, bool(_cur.get("boundary", false)))
+		if _sketch != null:
+			_sketch.stroke_begin()
+			_sketch.stroke_add(p0, 0.008, Color(0.1, 0.2, 0.8))
+		_cur_i = 1
+	var pts: PackedVector3Array = _cur.points
+	var stop := mini(_cur_i + pace, pts.size())
+	for i in range(_cur_i, stop):
+		pipeline.pen_event("point", _cur_k, pts[i], 0.5)
+		if _sketch != null:
+			_sketch.stroke_add(pts[i], 0.008, Color(0.1, 0.2, 0.8))
+	_cur_i = stop
+	if _cur_i >= pts.size():
+		pipeline.pen_event("end", _cur_k)
+		strokes_sent += 1
+		if _sketch != null:
+			_sketch.stroke_end()
+		_cur = {}
+		if _replay.is_empty():
+			pipeline.pen_finish()
 
 func _forward_tools() -> void:
 	if body == null:
