@@ -50,12 +50,12 @@ jobs:
             cat control.txt; echo "the run passed with the capture viewport never updated"; exit 1
           fi
           cat control.txt
-          test "$(cat control/.*.log | grep -c '^RESULT: FAIL (zero views rendered')" = 2
+          test "$(cat control/.*.log | grep -c '^RESULT: FAIL (zero views rendered')" = 3
           if python3 "$RUNNER_TEMP/check_orbit_views.py" control > control-check.txt; then
             cat control-check.txt; echo "the checker passed bundles with no rendered view"; exit 1
           fi
           cat control-check.txt
-          test "$(grep -c 'has zero rendered views' control-check.txt)" -ge 2
+          test "$(grep -c 'has zero rendered views' control-check.txt)" -ge 3
       - uses: actions/upload-artifact@v4
         if: always()
         with:

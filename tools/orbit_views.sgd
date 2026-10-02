@@ -2,9 +2,12 @@
 # .tsv, each camera from sphere_hammersley_sequence, rendered by a SubViewport, the diff a fragment shader.
 # walking: the oracle's 8@-1,-11.4 views worst MAD first, columns original | port | |diff| x4.
 # persona: tools/persona_hana.json replayed through StationPlayer.step(), a row per stop on the tour
-# with 4 views from that eye. A view counts when it is not one flat colour and changed since its camera
+# with 4 views from that eye. world-grab: three scripted two-hand pinches, each pulling the hands from
+# 0.8 m to 0.2 m apart and turning them 15 degrees; the measured grab moves the world against a fixed
+# viewer, and 8 cameras orbit the grab pivot, columns before | after, scale and yaw in the .tsv.
+# Each view counts when it is not one flat colour and changed since its camera
 # moved; a missing one is a `none` row in the .tsv and FAILs. --control=zero_views never updates the capture.
-#   godot --path . --script res://tools/orbit_views.sgd -- --feature=walking|persona --out=<png>
+#   godot --path . --script res://tools/orbit_views.sgd -- --feature=walking|persona|world-grab --out=<png>
 #       [--oracle=<prefix>] [--tag=<release>] [--commit=<sha>] [--control=zero_views]
 extends SceneTree
 
@@ -17,10 +20,16 @@ const LABEL_W := 400
 const HEAD_H := 96
 const COL_H := 30
 const SETTLE := 12
+const HAND_Y := 1.2
+const HAND_Z := -0.4
+const GRAB_TURN := 15.0
+const GRAB_CYCLES := 3
+const ORBIT_R := 6.0
 const DIFF := "shader_type canvas_item;\nuniform sampler2D a : filter_linear;\nuniform sampler2D b : filter_linear;\nuniform float gain = 1.0;\nvoid fragment() {\n\tCOLOR = vec4(clamp(abs(texture(a, UV).rgb - texture(b, UV).rgb) * gain, 0.0, 1.0), 1.0);\n}\n"
 const FEATURES := {
 	"walking": ["walking a faithful station in VR", "(likely, p=0.70)", "motivation, surprise"],
 	"persona": ["the persona visitor touring on its own", "(even, p=0.45)", "emergence"],
+	"world-grab": ["world grab: turning the town like a model", "(likely, p=0.65)", "sense, surprise"],
 }
 
 var _feature := ""
@@ -44,6 +53,14 @@ var _sheet: SubViewport
 var _sheet_frames := -1
 var _replayed := false
 var _before: Image
+var _left := XRPositionalTracker.new()
+var _right := XRPositionalTracker.new()
+var _grab_frame := -1
+var _grabbed := false
+var _origin := Transform3D()
+var _canvas_rest := Transform3D()
+var _station_rest := Transform3D()
+var _grab := {}
 
 
 func _initialize() -> void:
@@ -70,6 +87,8 @@ func _initialize() -> void:
 		_scene = load("res://addons/sakuragaoka_station/station.tscn").instantiate()
 		_station = _scene
 	else:
+		if _feature == "world-grab":
+			_add_trackers()
 		_scene = load("res://xr_main.tscn").instantiate()
 		_station = _scene.get_node("World/Station")
 	_station.built.connect(_on_built)
@@ -102,12 +121,17 @@ func _process(_dt: float) -> bool:
 	if Time.get_ticks_msec() - _t0 > 900000:
 		_fail("no sheet in 900 s")
 		return true
-	if _feature == "persona" and _job < 0 and not _replayed:
+	if _feature != "walking" and _job < 0 and not _replayed:
 		var p = _scene.get_node("World/StationPlayer")
 		if p.walker != null:
-			_replay(p)
+			if _feature == "persona":
+				_replay(p)
+			else:
+				_grab_views(p)
 	if _job >= 0 and _job < _jobs.size():
 		_render_job()
+	elif _job >= 0 and _feature == "world-grab" and not _grabbed:
+		_grab_tick()
 	elif _job >= 0 and _sheet == null:
 		_compose()
 	elif _sheet != null:
@@ -123,7 +147,7 @@ func _render_job() -> void:
 	if _frames == 0:
 		_before = _cap.get_texture().get_image()
 		_before.convert(Image.FORMAT_RGB8)
-		_cam.global_transform = _station.global_transform * j.cam
+		_cam.global_transform = j.cam if j.get("abs", false) else _station.global_transform * j.cam
 		_cam.fov = j.fov
 	_frames += 1
 	if _frames < SETTLE:
@@ -185,6 +209,74 @@ func _add_persona_row(p, say: String) -> void:
 		_jobs.append({"row": r, "col": i, "cam": _eye(views[i]), "fov": 58.0})
 
 
+func _add_trackers() -> void:
+	for t in [[_left, &"left_hand", XRPositionalTracker.TRACKER_HAND_LEFT], [_right, &"right_hand",
+			XRPositionalTracker.TRACKER_HAND_RIGHT]]:
+		t[0].type = XRServer.TRACKER_CONTROLLER
+		t[0].name = t[1]
+		t[0].hand = t[2]
+		XRServer.add_tracker(t[0])
+	_hands(0.4, 0.0, 0.0)
+
+
+func _hands(half: float, turn_deg: float, grip: float) -> void:
+	var mid := Vector3(0.0, HAND_Y, HAND_Z)
+	var off := Vector3(half, 0.0, 0.0).rotated(Vector3.UP, deg_to_rad(turn_deg))
+	for t in [[_left, mid - off], [_right, mid + off]]:
+		t[0].set_pose(&"default", Transform3D(Basis(), t[1]), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		t[0].set_input(&"grip", grip)
+
+
+func _grab_views(p) -> void:
+	_replayed = true
+	var origin: Node3D = _scene.get_node("World/XROrigin3D")
+	origin.global_transform = _station.global_transform * p.walker.origin()
+	_origin = origin.global_transform
+	var canvas = _scene.get_node("World/XROrigin3D/Canvas")
+	canvas.enabled = true
+	_canvas_rest = canvas.transform
+	_station_rest = _station.global_transform
+	var pivot: Vector3 = _origin * Vector3(0.0, HAND_Y, HAND_Z)
+	var views := _hammersley("8@0,0")
+	for i in views.size():
+		_rows.append({"name": "view %d  az %.1f  el %.1f" % [i, views[i][2], views[i][3]], "cells": [null, null],
+				"views": [views[i]], "n": views.size(), "view": i})
+		var look := Basis.from_euler(Vector3(deg_to_rad(views[i][3]), deg_to_rad(views[i][2]), 0.0), EULER_ORDER_YXZ)
+		var at := Transform3D(look, pivot + look.z * ORBIT_R)
+		_jobs.append({"row": i, "col": 0, "cam": at, "abs": true, "fov": 58.0})
+	_grab_frame = 0
+	_job = 0
+
+
+func _grab_tick() -> void:
+	var canvas = _scene.get_node("World/XROrigin3D/Canvas")
+	_grab_frame += 1
+	var cycle := (_grab_frame - 1) / 220
+	var f := (_grab_frame - 1) % 220
+	if cycle < GRAB_CYCLES:
+		if f < 30:
+			_hands(0.4, 0.0, 0.0)
+		elif f < 70:
+			_hands(0.4, 0.0, 1.0)
+		elif f < 160:
+			var k := (f - 70) / 90.0
+			_hands(lerpf(0.4, 0.1, k), GRAB_TURN * k, 1.0)
+		else:
+			_hands(0.1, GRAB_TURN, 1.0 if f < 210 else 0.0)
+		return
+	if f < 60:
+		_hands(0.4, 0.0, 0.0)
+		return
+	var d: Transform3D = canvas.transform * _canvas_rest.affine_inverse()
+	_grab = {"scale": d.basis.get_scale().x, "yaw": rad_to_deg(d.basis.orthonormalized().get_euler().y)}
+	_station.global_transform = _origin * d * _origin.affine_inverse() * _station_rest
+	print("joy: world grab measured scale %.5f, yaw %.2f deg (%d pinches, hands 0.8 m to 0.2 m apart, turned %.0f deg each)" % [
+			_grab.scale, _grab.yaw, GRAB_CYCLES, GRAB_TURN])
+	for r in _rows.size():
+		_jobs.append({"row": r, "col": 1, "cam": _jobs[r].cam, "abs": true, "fov": 58.0})
+	_grabbed = true
+
+
 func _compose() -> void:
 	var cols: PackedStringArray
 	if _feature == "walking":
@@ -205,6 +297,8 @@ func _compose() -> void:
 			row["mad"] = m.mean * 4.0 / 3.0
 			row.name += "\nMAD %.2f (RGB 0-255, full res)" % row.mad
 		_rows.sort_custom(func(x, y): return x.mad > y.mad)
+	elif _feature == "world-grab":
+		cols = PackedStringArray(["before the grab", "after: scale %.4f, yaw %.1f deg" % [_grab.get("scale", 0.0), _grab.get("yaw", 0.0)]])
 	else:
 		cols = PackedStringArray(["view 0 of 4", "view 1 of 4", "view 2 of 4", "view 3 of 4"])
 	var info: Array = FEATURES[_feature]
@@ -292,6 +386,11 @@ func _finish() -> void:
 	if _rendered == 0:
 		_fail("zero views rendered for %s" % _feature)
 		return
+	var want_scale := pow(0.25, GRAB_CYCLES)
+	var want_yaw := GRAB_TURN * GRAB_CYCLES
+	if _feature == "world-grab" and (absf(log(_grab.get("scale", 1.0) / want_scale)) > 0.1 or absf(absf(_grab.get("yaw", 0.0)) - want_yaw) > 5.0):
+		_fail("the grab measured scale %.5f, yaw %.2f; the hands asked for %.5f and %.0f" % [_grab.get("scale", 1.0), _grab.get("yaw", 0.0), want_scale, want_yaw])
+		return
 	for row in _rows:
 		if is_inf(row.get("mad", 0.0)):
 			_fail("%s has no oracle view or no port render" % row.name.get_slice("\n", 0))
@@ -309,18 +408,26 @@ func _write_tsv() -> void:
 	f.store_line("\t".join(PackedStringArray(["row", "feature", "forecast", "view", "n", "azimuth_deg", "elevation_deg", "metric", "value"])))
 	for r in _rows.size():
 		var row: Dictionary = _rows[r]
-		for k in row.views.size():
-			var v: PackedFloat64Array = row.views[k]
-			var col := 1 if _feature == "walking" else k
-			var i: int = row.view if _feature == "walking" else k
-			var shown: bool = row.get("drawn_%d" % col, false)
-			var metric := "mad_rgb" if _feature == "walking" else "eye_y_m"
-			var value: float = row.get("mad", 0.0) if _feature == "walking" else row.eye_y
-			if is_inf(value):
-				value = -1.0
-			f.store_line("\t".join(PackedStringArray([str(r), _feature, info[1], str(i) if shown else "none", str(row.n),
-					"%.6f" % v[2], "%.6f" % v[3], metric, "%.4f" % value])))
+		for e in _tsv_cells(row):
+			var v: PackedFloat64Array = row.views[e[0]]
+			var shown: bool = row.get("drawn_%d" % e[1], false)
+			f.store_line("\t".join(PackedStringArray([str(r), _feature, info[1], str(e[2]) if shown else "none", str(row.n),
+					"%.6f" % v[2], "%.6f" % v[3], e[3], "%.4f" % e[4]])))
 	f.close()
+
+
+## [view slot, sheet column, view index, metric, value] for each cell of a row.
+func _tsv_cells(row: Dictionary) -> Array:
+	if _feature == "walking":
+		var mad: float = row.get("mad", INF)
+		return [[0, 1, row.view, "mad_rgb", -1.0 if is_inf(mad) else mad]]
+	if _feature == "world-grab":
+		return [[0, 0, row.view, "scale", 1.0], [0, 1, row.view, "scale", _grab.get("scale", 0.0)],
+				[0, 1, row.view, "yaw_deg", _grab.get("yaw", 0.0)]]
+	var out := []
+	for k in row.views.size():
+		out.append([k, k, k, "eye_y_m", row.eye_y])
+	return out
 
 
 func _fail(why: String) -> void:

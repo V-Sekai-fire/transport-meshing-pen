@@ -45,16 +45,17 @@ mkdir -p "$OUT/.oracle"
 
 "$TO" 900 "$GODOT" --headless --path "$ROOT" --import >"$OUT/.import.log" 2>&1
 
-for feature in walking persona; do
+for feature in walking persona world-grab; do
 	case $feature in
 		walking) title="walking a faithful station in VR"; joy="(likely, p=0.70)" ;;
 		persona) title="the persona visitor touring on its own"; joy="(even, p=0.45)" ;;
+		world-grab) title="world grab: turning the town like a model"; joy="(likely, p=0.65)" ;;
 	esac
 	n=1
 	while compgen -G "$OUT/${DAY}_meshing-pen_joy-${feature}_$(printf %04d $n).*" >/dev/null; do n=$((n + 1)); done
 	stem="${DAY}_meshing-pen_joy-${feature}_$(printf %04d $n)"
 	log="$OUT/.$stem.log"
-	"$TO" 1000 "$GODOT" --path "$ROOT" --xr-mode off --resolution 640x360 --script res://tools/orbit_views.sgd -- \
+	"$TO" 1000 "$GODOT" --path "$ROOT" --xr-mode off --fixed-fps 60 --resolution 640x360 --script res://tools/orbit_views.sgd -- \
 		--feature=$feature --out="$OUT/$stem.png" --oracle="$OUT/.oracle/$ORACLE-view" \
 		--tag="$TAG" --commit="$COMMIT" ${CONTROL[@]+"${CONTROL[@]}"} >"$log" 2>&1
 	grep '^joy:' "$log"
