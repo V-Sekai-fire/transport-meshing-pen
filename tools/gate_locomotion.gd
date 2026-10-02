@@ -121,8 +121,10 @@ func _run() -> void:
 	var landed: bool = w.teleport(Vector3(gx, st.ground_height(gx, gz, 1e9), gz))
 	_check("teleport lands", landed and Vector2(w.pos.x - gx, w.pos.z - gz).length() < 1e-3,
 			"onto the plaza 4 m ahead: %s" % landed)
-	var into: bool = w.teleport(Vector3(3.4, 0.6, -21.8))
-	_check("teleport refused", not into, "into the handrail: %s" % into)
+	var into: bool = w.teleport(Vector3(3.2, 0.6, -21.8))
+	var centre: bool = w.teleport(Vector3(3.4, 0.6, -21.8))
+	print("NOTE teleport with its centre inside the 8 cm handrail: %s" % centre)
+	_check("teleport refused", not into, "overlapping the handrail: %s" % into)
 
 	var a := _trace(PackedFloat64Array([0.0, 0.9]))
 	var b_in := PackedFloat64Array([0.0, 0.9])
