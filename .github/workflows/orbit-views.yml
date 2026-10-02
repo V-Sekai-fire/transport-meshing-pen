@@ -1,0 +1,72 @@
+# RFD 2293's dev.2 joy forecasts as orbit-view bundles (contract-orbit-views STANDARD.md), rendered
+# by tools/orbit_views.sgd on the pinned Linux double editor under Xvfb and Mesa's software Vulkan,
+# checked by check_orbit_views.py and saved as a workflow artifact. The control never updates the
+# capture viewport, so every view is missing, and both the run and the checker must FAIL.
+name: orbit-views
+on:
+  pull_request:
+    paths: ["tools/orbit_views.*", ".github/workflows/orbit-views.yml"]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  ORBIT_VIEWS_COMMIT: 5286b17b5db1fe53f7282e79cd8798c39452b52e
+jobs:
+  bundles:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: The pinned engine, the vendored addon and the standard's checker
+        run: |
+          . tools/frame/releases.env
+          base=https://github.com/V-Sekai-fire/service-godot-build/releases/download
+          bin=godot.linuxbsd.editor.double.x86_64
+          so=libgodot_riscv.linux.template_release.double.x86_64.so
+          curl -fsSL -o "$RUNNER_TEMP/engine.sums" "$base/$ENGINE_TAG/SHA256SUMS"
+          curl -fsSL -o "$RUNNER_TEMP/addon.sums" "$base/$ADDON_TAG/SHA256SUMS"
+          curl -fsSL -o "$RUNNER_TEMP/$bin" "$base/$ENGINE_TAG/$bin"
+          (cd "$RUNNER_TEMP" && grep " $bin\$" engine.sums | sha256sum -c -)
+          (cd addons/godot_sandbox/bin && grep " $so\$" "$RUNNER_TEMP/addon.sums" | sha256sum -c -)
+          chmod +x "$RUNNER_TEMP/$bin"
+          echo "GODOT=$RUNNER_TEMP/$bin" >> "$GITHUB_ENV"
+          curl -fsSL -o "$RUNNER_TEMP/check_orbit_views.py" \
+            "https://raw.githubusercontent.com/V-Sekai-fire/contract-orbit-views/$ORBIT_VIEWS_COMMIT/check_orbit_views.py"
+          python3 "$RUNNER_TEMP/check_orbit_views.py" --self-test
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb mesa-vulkan-drivers libvulkan1 > /dev/null
+      - name: The bundles
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          case "$GITHUB_REF" in refs/tags/*) ;; *) tag="ci-${GITHUB_SHA::12}" ;; esac
+          xvfb-run -a -s "-screen 0 1280x720x24" tools/orbit_views.sh "$tag" bundles
+          python3 "$RUNNER_TEMP/check_orbit_views.py" bundles
+      - name: The zero-views control (the run and the checker must FAIL)
+        run: |
+          if xvfb-run -a -s "-screen 0 1280x720x24" tools/orbit_views.sh control control --control=zero_views > control.txt 2>&1; then
+            cat control.txt; echo "the run passed with the capture viewport never updated"; exit 1
+          fi
+          cat control.txt
+          test "$(cat control/.*.log | grep -c '^RESULT: FAIL (zero views rendered')" = 2
+          if python3 "$RUNNER_TEMP/check_orbit_views.py" control > control-check.txt; then
+            cat control-check.txt; echo "the checker passed bundles with no rendered view"; exit 1
+          fi
+          cat control-check.txt
+          test "$(grep -c 'has zero rendered views' control-check.txt)" -ge 2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: orbit-views
+          path: |
+            bundles/*.png
+            bundles/*.cff
+            bundles/*.tsv
+            bundles/*.xmp
+            bundles/.*.log
+            control.txt
+            control-check.txt
+          include-hidden-files: true
+          if-no-files-found: warn

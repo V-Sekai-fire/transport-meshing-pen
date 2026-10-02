@@ -1,0 +1,356 @@
+# One RFD 2293 joy feature as orbit views (contract-orbit-views STANDARD.md): a still sheet and its
+# .tsv, each camera from sphere_hammersley_sequence, rendered by a SubViewport, the diff a fragment shader.
+# walking: the oracle's 8@-1,-11.4 views worst MAD first, columns original | port | |diff| x4.
+# persona: tools/persona_hana.json replayed through StationPlayer.step(), a row per stop on the tour
+# with 4 views from that eye. A view counts when it is not one flat colour and changed since its camera
+# moved; a missing one is a `none` row in the .tsv and FAILs. --control=zero_views never updates the capture.
+#   godot --path . --script res://tools/orbit_views.sgd -- --feature=walking|persona --out=<png>
+#       [--oracle=<prefix>] [--tag=<release>] [--commit=<sha>] [--control=zero_views]
+extends SceneTree
+
+const EYE := 1.52
+const STATION_AT := "8@-1,-11.4"
+const PERSONA := "res://tools/persona_hana.json"
+const DIFF_GAIN := 4.0
+const THUMB := Vector2i(480, 270)
+const LABEL_W := 400
+const HEAD_H := 96
+const COL_H := 30
+const SETTLE := 12
+const DIFF := "shader_type canvas_item;\nuniform sampler2D a : filter_linear;\nuniform sampler2D b : filter_linear;\nuniform float gain = 1.0;\nvoid fragment() {\n\tCOLOR = vec4(clamp(abs(texture(a, UV).rgb - texture(b, UV).rgb) * gain, 0.0, 1.0), 1.0);\n}\n"
+const FEATURES := {
+	"walking": ["walking a faithful station in VR", "(likely, p=0.70)", "motivation, surprise"],
+	"persona": ["the persona visitor touring on its own", "(even, p=0.45)", "emergence"],
+}
+
+var _feature := ""
+var _out := ""
+var _oracle := ""
+var _tag := "untagged"
+var _commit := "unknown"
+var _zero := false
+var _t0 := Time.get_ticks_msec()
+var _scene: Node
+var _station: Node3D
+var _cap := SubViewport.new()
+var _cam := Camera3D.new()
+var _jobs: Array = []
+var _job := -1
+var _frames := 0
+var _rows: Array = []
+var _rendered := 0
+var _attempted := 0
+var _sheet: SubViewport
+var _sheet_frames := -1
+var _replayed := false
+var _before: Image
+
+
+func _initialize() -> void:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--feature="):
+			_feature = a.substr(10)
+		elif a.begins_with("--out="):
+			_out = a.substr(6)
+		elif a.begins_with("--oracle="):
+			_oracle = a.substr(9)
+		elif a.begins_with("--tag="):
+			_tag = a.substr(6)
+		elif a.begins_with("--commit="):
+			_commit = a.substr(9)
+		elif a == "--control=zero_views":
+			_zero = true
+	if not FEATURES.has(_feature) or _out == "":
+		_fail("usage: --feature=%s --out=<png>" % "|".join(FEATURES.keys()))
+		return
+	if _feature == "walking":
+		if _oracle == "":
+			_fail("walking needs --oracle=<prefix of the oracle's view PNGs>")
+			return
+		_scene = load("res://addons/sakuragaoka_station/station.tscn").instantiate()
+		_station = _scene
+	else:
+		_scene = load("res://xr_main.tscn").instantiate()
+		_station = _scene.get_node("World/Station")
+	_station.built.connect(_on_built)
+	get_root().add_child(_scene)
+
+
+func _on_built(_stats: Dictionary) -> void:
+	var size := Vector2i(1920, 1080) if _feature == "walking" else Vector2i(960, 540)
+	_cap.size = size
+	_cap.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_cap.world_3d = get_root().world_3d
+	_cam.fov = 58.0
+	_cam.near = 0.1
+	_cam.far = 2500.0
+	if _zero:
+		_cap.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_cap.add_child(_cam)
+	get_root().add_child(_cap)
+	_cam.make_current()
+	if _feature == "walking":
+		var views := _hammersley(STATION_AT)
+		for i in views.size():
+			_jobs.append({"row": i, "col": 1, "cam": _eye(views[i]), "fov": 58.0})
+			_rows.append({"name": "view %d  az %.1f  el %.1f" % [i, views[i][2], views[i][3]], "cells": [null, null, null],
+					"view": i, "views": [views[i]], "n": views.size()})
+		_job = 0
+
+
+func _process(_dt: float) -> bool:
+	if Time.get_ticks_msec() - _t0 > 900000:
+		_fail("no sheet in 900 s")
+		return true
+	if _feature == "persona" and _job < 0 and not _replayed:
+		var p = _scene.get_node("World/StationPlayer")
+		if p.walker != null:
+			_replay(p)
+	if _job >= 0 and _job < _jobs.size():
+		_render_job()
+	elif _job >= 0 and _sheet == null:
+		_compose()
+	elif _sheet != null:
+		_sheet_frames += 1
+		if _sheet_frames == 3:
+			_finish()
+			return true
+	return false
+
+
+func _render_job() -> void:
+	var j: Dictionary = _jobs[_job]
+	if _frames == 0:
+		_before = _cap.get_texture().get_image()
+		_before.convert(Image.FORMAT_RGB8)
+		_cam.global_transform = _station.global_transform * j.cam
+		_cam.fov = j.fov
+	_frames += 1
+	if _frames < SETTLE:
+		return
+	var img: Image = _cap.get_texture().get_image()
+	img.convert(Image.FORMAT_RGB8)
+	_attempted += 1
+	var flat := Image.create(img.get_width(), img.get_height(), false, Image.FORMAT_RGB8)
+	flat.fill(img.get_pixel(0, 0))
+	var drawn: bool = img.compute_image_metrics(flat, false).max > 0.0 and img.compute_image_metrics(_before, false).max > 0.0
+	if drawn:
+		_rendered += 1
+	var row: Dictionary = _rows[j.row]
+	row.cells[j.col] = img
+	if not drawn:
+		row["blank"] = row.get("blank", 0) + 1
+		row.cells[j.col] = null
+	row["drawn_%d" % j.col] = drawn
+	_frames = 0
+	_job += 1
+
+
+func _replay(p) -> void:
+	_replayed = true
+	var beats: Array = JSON.parse_string(FileAccess.get_file_as_string(PERSONA))
+	var origin: Node3D = _scene.get_node("World/XROrigin3D")
+	var hand: Node3D = _scene.get_node("World/XROrigin3D/hand_right")
+	var dt := 1.0 / 60.0
+	var last := Vector3(INF, INF, INF)
+	for b in beats:
+		if b.has("arrive"):
+			p.walker.set_pose(b.arrive[0], b.arrive[1], b.arrive[2])
+		var left := Vector2(b.left[0], b.left[1]) if b.has("left") else Vector2.ZERO
+		var right := Vector2(b.right[0], b.right[1]) if b.has("right") else Vector2.ZERO
+		var aim := right.y > 0.6
+		var held_before: Vector3 = p.walker.pos
+		for f in int(round(b.seconds / dt)):
+			origin.global_transform = _station.global_transform * p.walker.origin()
+			hand.transform = Transform3D(Basis(), Vector3(0.2, 1.2, -0.3))
+			var turn := int(signf(right.x)) if f == 0 and absf(right.x) > 0.6 else 0
+			p.step(dt, Vector2.ZERO if b.has("buttons") else left, turn, aim)
+		var moved: bool = p.walker.pos.distance_to(last) > 0.5
+		var note := ""
+		if b.say.contains("teleport") and not aim:
+			note = "  teleported %.2f m" % p.walker.pos.distance_to(held_before)
+		if moved or b.has("arrive") or note != "":
+			_add_persona_row(p, b.say + note)
+			last = p.walker.pos
+	_job = 0
+
+
+func _add_persona_row(p, say: String) -> void:
+	var r := _rows.size()
+	var pos: Vector3 = p.walker.pos
+	var views := _hammersley("4@%f,%f" % [pos.x, pos.z])
+	_rows.append({"name": "%s\n(%.2f, %.2f, %.2f)" % [say, pos.x, pos.y, pos.z], "cells": [null, null, null, null],
+			"views": views, "n": views.size(), "eye_y": pos.y + EYE})
+	for i in views.size():
+		_jobs.append({"row": r, "col": i, "cam": _eye(views[i]), "fov": 58.0})
+
+
+func _compose() -> void:
+	var cols: PackedStringArray
+	if _feature == "walking":
+		cols = PackedStringArray(["original (oracle)", "port", "|diff| x%d" % int(DIFF_GAIN)])
+		for row in _rows:
+			var orig := Image.load_from_file("%s%d.png" % [_oracle, row.view])
+			if orig == null:
+				row["mad"] = INF
+				row.name += "\nFAIL: no oracle view"
+				continue
+			orig.convert(Image.FORMAT_RGB8)
+			row.cells[0] = orig
+			var port = row.cells[1]
+			if port == null:
+				row["mad"] = INF
+				continue
+			var m: Dictionary = port.compute_image_metrics(orig, false)
+			row["mad"] = m.mean * 4.0 / 3.0
+			row.name += "\nMAD %.2f (RGB 0-255, full res)" % row.mad
+		_rows.sort_custom(func(x, y): return x.mad > y.mad)
+	else:
+		cols = PackedStringArray(["view 0 of 4", "view 1 of 4", "view 2 of 4", "view 3 of 4"])
+	var info: Array = FEATURES[_feature]
+	var w := LABEL_W + THUMB.x * cols.size()
+	var h := HEAD_H + COL_H + THUMB.y * _rows.size()
+	_sheet = SubViewport.new()
+	_sheet.size = Vector2i(w, h)
+	_sheet.transparent_bg = false
+	_sheet.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	get_root().add_child(_sheet)
+	_rect(Vector2(0, 0), Vector2(w, h), Color(0.12, 0.12, 0.14))
+	_label("%s   %s   [%s]" % [info[0], info[1], info[2]], Vector2(16, 10), 30)
+	_label("meshing-pen %s @ %s   %d of %d views rendered   sphere_hammersley_sequence   %s" % [
+			_tag, _commit.left(12), _rendered, _attempted, Time.get_datetime_string_from_system(true) + "Z"], Vector2(16, 54), 18)
+	for c in cols.size():
+		_label(cols[c], Vector2(LABEL_W + c * THUMB.x + 8, HEAD_H + 4), 18)
+	for r in _rows.size():
+		var row: Dictionary = _rows[r]
+		var y := HEAD_H + COL_H + r * THUMB.y
+		var text: String = row.name
+		if row.get("blank", 0) > 0:
+			text += "\nFAIL: %d view(s) blank" % row.blank
+		_label(text, Vector2(10, y + 8), 16, LABEL_W - 20)
+		for c in cols.size():
+			var at := Vector2(LABEL_W + c * THUMB.x, y)
+			if _feature == "walking" and c == 2:
+				if row.cells[0] != null and row.cells[1] != null:
+					_diff(row.cells[0], row.cells[1], at)
+			elif row.cells[c] != null:
+				var tr := TextureRect.new()
+				tr.texture = ImageTexture.create_from_image(row.cells[c])
+				tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				tr.stretch_mode = TextureRect.STRETCH_SCALE
+				tr.position = at
+				tr.size = Vector2(THUMB)
+				_sheet.add_child(tr)
+	_sheet_frames = 0
+
+
+func _diff(a: Image, b: Image, at: Vector2) -> void:
+	var mat := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = DIFF
+	mat.shader = sh
+	mat.set_shader_parameter("a", ImageTexture.create_from_image(a))
+	mat.set_shader_parameter("b", ImageTexture.create_from_image(b))
+	mat.set_shader_parameter("gain", DIFF_GAIN)
+	var r := ColorRect.new()
+	r.material = mat
+	r.position = at
+	r.size = Vector2(THUMB)
+	_sheet.add_child(r)
+
+
+func _rect(at: Vector2, size: Vector2, c: Color) -> void:
+	var r := ColorRect.new()
+	r.color = c
+	r.position = at
+	r.size = size
+	_sheet.add_child(r)
+
+
+func _label(text: String, at: Vector2, px: int, width := 0) -> void:
+	var l := Label.new()
+	l.text = text
+	l.position = at
+	l.add_theme_font_size_override("font_size", px)
+	l.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95))
+	if width > 0:
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD
+		l.size = Vector2(width, THUMB.y - 16)
+	_sheet.add_child(l)
+
+
+func _finish() -> void:
+	var img: Image = _sheet.get_texture().get_image()
+	DirAccess.make_dir_recursive_absolute(_out.get_base_dir())
+	img.save_png(_out)
+	_write_tsv()
+	print("joy: feature %s; %d rows; views %d of %d rendered; sheet %dx%d saved %s" % [
+			_feature, _rows.size(), _rendered, _attempted, img.get_width(), img.get_height(), _out])
+	if _feature == "walking":
+		for row in _rows:
+			print("joy: %s" % row.name.replace("\n", "; "))
+	if _rendered == 0:
+		_fail("zero views rendered for %s" % _feature)
+		return
+	for row in _rows:
+		if is_inf(row.get("mad", 0.0)):
+			_fail("%s has no oracle view or no port render" % row.name.get_slice("\n", 0))
+			return
+	if _rendered < _attempted:
+		_fail("%d of %d views blank for %s" % [_attempted - _rendered, _attempted, _feature])
+		return
+	print("RESULT: PASS")
+	quit(0)
+
+
+func _write_tsv() -> void:
+	var info: Array = FEATURES[_feature]
+	var f := FileAccess.open(_out.get_basename() + ".tsv", FileAccess.WRITE)
+	f.store_line("\t".join(PackedStringArray(["row", "feature", "forecast", "view", "n", "azimuth_deg", "elevation_deg", "metric", "value"])))
+	for r in _rows.size():
+		var row: Dictionary = _rows[r]
+		for k in row.views.size():
+			var v: PackedFloat64Array = row.views[k]
+			var col := 1 if _feature == "walking" else k
+			var i: int = row.view if _feature == "walking" else k
+			var shown: bool = row.get("drawn_%d" % col, false)
+			var metric := "mad_rgb" if _feature == "walking" else "eye_y_m"
+			var value: float = row.get("mad", 0.0) if _feature == "walking" else row.eye_y
+			if is_inf(value):
+				value = -1.0
+			f.store_line("\t".join(PackedStringArray([str(r), _feature, info[1], str(i) if shown else "none", str(row.n),
+					"%.6f" % v[2], "%.6f" % v[3], metric, "%.4f" % value])))
+	f.close()
+
+
+func _fail(why: String) -> void:
+	print("RESULT: FAIL (%s)" % why)
+	quit(1)
+
+
+## A walking eye "x,z,yaw,pitch" 1.52 m above the ground, as tools/realize_check.gd places it.
+func _eye(c: PackedFloat64Array) -> Transform3D:
+	var p := Vector3(c[0], _station.ctx.L.height_at(c[0], c[1]) + EYE, c[1])
+	return Transform3D(Basis.from_euler(Vector3(deg_to_rad(c[3]), deg_to_rad(c[2]), 0.0), EULER_ORDER_YXZ), p)
+
+
+## sphere_hammersley_sequence(i, n, remap=True) as [x, z, azimuth, elevation], copied from
+## entities-sakuragaoka-station tools/realize_check.gd.
+static func _hammersley(spec: String) -> Array:
+	var parts := spec.split("@")
+	var n := int(parts[0])
+	var at := parts[1].split(",")
+	var out := []
+	for i in n:
+		var u := float(i) / n
+		var v := 0.0
+		var f := 0.5
+		var k := i
+		while k > 0:
+			v += (k & 1) * f
+			k >>= 1
+			f *= 0.5
+		u = 2.0 * u if u < 0.25 else 2.0 / 3.0 * u + 1.0 / 3.0
+		var el := rad_to_deg(acos(1.0 - 2.0 * u) - PI / 2.0)
+		out.append(PackedFloat64Array([float(at[0]), float(at[1]), v * 360.0, clampf(el, -85.0, 85.0)]))
+	return out
