@@ -9,7 +9,7 @@ authors:
   - name: Sakuragaoka Station contributors
   - name: V-Sekai-fire
 repository-code: https://github.com/V-Sekai-fire/entities-sakuragaoka-station
-commit: b9db7335fef543e90b82e9f0d5043de7bb46c543
+commit: ce2b693686b2e5b32ef85ec6e06928f73f0e8fee
 license: MIT
 references:
   - type: software
