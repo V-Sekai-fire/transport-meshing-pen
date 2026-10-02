@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://addons/sakuragaoka_station/station.tscn" id="8_station"]
@@ -12,6 +12,7 @@
 [ext_resource type="Script" path="res://xr/station_player.gd" id="10_player"]
 [ext_resource type="Script" path="res://xr/rx/xr_component_hand_movement.gd" id="11_move"]
 [ext_resource type="Script" path="res://xr/rx/xr_component_hand_rotation.gd" id="12_turn"]
+[ext_resource type="Script" path="res://xr/radial_menu.gd" id="13_radial"]
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_strokes"]
 
@@ -38,6 +39,13 @@ origin_path = NodePath("../XROrigin3D")
 camera_path = NodePath("../XROrigin3D/XRCamera3D")
 flat_camera_path = NodePath("../FlatCamera")
 aim_hand_path = NodePath("../XROrigin3D/hand_right")
+radial_path = NodePath("../Radial")
+
+[node name="Radial" type="Node3D" parent="World"]
+script = ExtResource("13_radial")
+player_path = NodePath("../StationPlayer")
+canvas_path = NodePath("../XROrigin3D/Canvas")
+hand_paths = Array[NodePath]([NodePath("../XROrigin3D/hand_left"), NodePath("../XROrigin3D/hand_right")])
 
 [node name="FlatCamera" type="Camera3D" parent="World"]
 transform = Transform3D(1, 0, 0, 0, 0.994522, 0.104528, 0, -0.104528, 0.994522, 0, 1.05, 2.4)

@@ -34,7 +34,19 @@ func _process(_dt: float) -> bool:
 	var landed: bool = p.walker.teleport(Vector3(target.x, p.stage.ground_height(target.x, target.z, 1e9), target.z))
 	print("player: walked %.3f m in 2 s at full stick (run), snap %.1f deg (second inside cooldown), teleport %s, %.2f ms/frame" % [
 			walked, turned, landed, (Time.get_ticks_usec() - t0) / 1000.0 / 122.0])
-	var ok := walked > 11.0 and walked < 13.0 and absf(absf(turned) - 30.0) < 0.01 and landed
+	var r = _main.get_node("World/Radial")
+	var canvas = _main.get_node("World/XROrigin3D/Canvas")
+	var picks := [r.pick(Vector2(0, 1)), r.pick(Vector2(0.9, -0.5)), r.pick(Vector2(-0.9, -0.5)), r.pick(Vector2(0.1, 0.1))]
+	r.open(null)
+	r.tilt(Vector2(0, 1))
+	var chose: String = r.release()
+	var grab_on: bool = canvas.enabled
+	r.open(null)
+	r.tilt(Vector2(0.9, -0.5))
+	r.release()
+	var home := Vector2(p.walker.pos.x - 1.6, p.walker.pos.z - 34.0).length()
+	print("radial: picks %s, chose %s, world grab %s, recentre %.3f m from the hero spot" % [picks, chose, grab_on, home])
+	var ok := picks == [0, 1, 2, -1] and chose == "World grab" and grab_on and home < 1e-3 and walked > 11.0 and walked < 13.0 and absf(absf(turned) - 30.0) < 0.01 and landed
 	print("RESULT: %s" % ("PASS" if ok else "FAIL"))
 	quit(0 if ok else 1)
 	return true

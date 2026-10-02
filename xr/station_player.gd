@@ -14,6 +14,7 @@ const TELEPORT_RANGE := 12.0
 @export var camera_path: NodePath
 @export var flat_camera_path: NodePath
 @export var aim_hand_path: NodePath
+@export var radial_path: NodePath
 
 var stage
 var walker
@@ -46,6 +47,12 @@ func _start(_stats: Dictionary) -> void:
 	walker = Walker.new(stage, _station.ctx.L.WORLD.play)
 	var h: Dictionary = _station.ctx.L.HERO
 	walker.set_pose(h.x, h.z, h.yaw, h.pitch)
+
+
+func recentre() -> void:
+	if walker:
+		var h: Dictionary = _station.ctx.L.HERO
+		walker.set_pose(h.x, h.z, h.yaw, h.pitch)
 
 
 func xr_active() -> bool:
@@ -101,6 +108,10 @@ func _place() -> void:
 
 
 func _process(dt: float) -> void:
+	var radial: Node3D = get_node_or_null(radial_path)
+	if radial and radial.visible:
+		step(dt, Vector2.ZERO, 0, false)
+		return
 	var move := Input.get_vector("move_left", "move_right", "move_backwards", "move_forwards")
 	var turn := int(Input.is_action_just_pressed("rotate_camera_right")) - int(Input.is_action_just_pressed("rotate_camera_left"))
 	var aim := false
