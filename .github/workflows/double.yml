@@ -62,3 +62,19 @@ jobs:
           fi
           cat grab-cold.txt
           grep -q "first two-hand grab, 0.0000 m" grab-cold.txt
+      - name: Locomotion gate (walk, stairs, ledge, handrail, snap turn, teleport, repeat in the MuJoCo guest)
+        run: |
+          timeout 900 "$GODOT" --headless --xr-mode off --path . --script tools/gate_locomotion.gd | tee loco.txt
+          grep -q "RESULT: PASS" loco.txt
+      - name: The locomotion gate's controls (each must FAIL)
+        run: |
+          for c in step_high no_resolve solid_land ulp; do
+            if timeout 900 "$GODOT" --headless --xr-mode off --path . --script tools/gate_locomotion.gd -- \
+              --control=$c > "loco-$c.txt" 2>&1; then
+              cat "loco-$c.txt"; echo "the gate passed with --control=$c"; exit 1
+            fi
+            grep -q "RESULT: FAIL" "loco-$c.txt" || { cat "loco-$c.txt"; echo "--control=$c did not reach a verdict"; exit 1; }
+            grep "^FAIL" "loco-$c.txt"
+          done
+      - name: The persona walk driver's packet layout matches oxrsys's Protocol.h
+        run: python3 tools/walk_oxrsys.py --self-test

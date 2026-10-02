@@ -33,9 +33,10 @@ func _initialize() -> void:
 		t[0].hand = t[2]
 		XRServer.add_tracker(t[0])
 	_main = load(SCENE).instantiate()
-	_main.get_node("World/XROrigin3D/Canvas/Station").free()
+	_main.get_node("World/Station").free()
 	get_root().add_child(_main)
 	_canvas = _main.get_node("World/XROrigin3D/Canvas")
+	_canvas.enabled = true
 	_rest = _canvas.transform
 	var away := Vector3(0.3, 0, 0)
 	# [frames, left grip, right grip, left from, left to, right from, right to, what to measure]

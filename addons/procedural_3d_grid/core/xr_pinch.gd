@@ -7,6 +7,7 @@ extends Node3D
 
 @export var hand_left: XRController3D = null
 @export var hand_right: XRController3D = null
+@export var enabled := false
 
 var prev_hand_left_transform: Transform3D
 var prev_hand_right_transform: Transform3D
@@ -55,6 +56,8 @@ func _ready() -> void:
 	hand_right_grab_debounce_timer = debounce_duration
 
 func _process(delta_time: float) -> void:
+	if not enabled:
+		return
 	var hand_left_grab: float = hand_left.get_float("grip")
 	var hand_right_grab: float = hand_right.get_float("grip")
 
