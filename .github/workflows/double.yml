@@ -91,5 +91,10 @@ jobs:
           fi
           cat probe-cold.txt
           grep -q "^RESULT: FAIL (snap cooldown)" probe-cold.txt
-      - name: The persona walk driver's packet layout matches oxrsys's Protocol.h
+      - name: The persona stairs judge and its controls (a skipped tread, a dip, no climb, a rising fall)
+        run: |
+          timeout 300 "$GODOT" --headless --xr-mode off --path . -s tools/persona_capture.gd -- --self-test | tee stairs.txt
+          grep -q "^RESULT: PASS" stairs.txt
+          test "$(grep -c '^PASS control:' stairs.txt)" = 4
+      - name: The persona walk driver's packet layout and beat file
         run: python3 tools/walk_oxrsys.py --self-test

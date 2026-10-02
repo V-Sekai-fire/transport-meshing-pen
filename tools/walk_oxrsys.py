@@ -2,16 +2,19 @@
 # SPDX-License-Identifier: MIT
 """Walk a persona through the pen in OXRSys as a Touch-class controller pair would.
 
-    python3 tools/walk_oxrsys.py [--beats beats.json] [--host 127.0.0.1] [--hz 90]
+    python3 tools/walk_oxrsys.py [--beats beats.json] [--host 127.0.0.1] [--hz 90] [--beat-file path]
     python3 tools/walk_oxrsys.py --self-test
 
 Sends ClientConnect, then TrackingPackets (Protocol.h, UDP 9945, 1008 bytes) carrying thumbsticks and
 face buttons, which the macOS simulator app does not send. The device name maps to the runtime's
 oculus/touch_controller profile. A beat is {"say", "seconds", "left": [x, y], "right": [x, y],
-"buttons": [names]}; the default visit is below.
+"buttons": [names]}; the default visit is below. Packets keep to a monotonic schedule, so a beat
+lasts its seconds; --beat-file holds "<index>\t<say>" for the running beat, then "<count>\tdone".
 """
 import argparse
+import datetime
 import json
+import os
 import socket
 import struct
 import sys
@@ -61,6 +64,13 @@ def packet(left=(0.0, 0.0), right=(0.0, 0.0), buttons=0, t_ns=None) -> bytes:
     return struct.pack(FMT, *vals)
 
 
+def write_beat(path, index, say):
+    if path:
+        with open(path + '.tmp', 'w') as f:
+            f.write(f"{index}\t{say}\n")
+        os.replace(path + '.tmp', path)
+
+
 def self_test() -> int:
     checks = [
         ("TrackingPacket is 1008 bytes", struct.calcsize(FMT) == 1008),
@@ -73,6 +83,13 @@ def self_test() -> int:
     checks.append(("buttons sit before the triggers", buttons == BUTTONS["A"] | BUTTONS["Y"]))
     shifted = struct.unpack_from('<4f', p, THUMBSTICK_OFFSET + 4)
     checks.append(("control: one field later does not read the sticks", shifted != sticks))
+    beat = f"/tmp/walk_oxrsys_selftest_{os.getpid()}"
+    write_beat(beat, 3, "Hana climbs")
+    checks.append(("the beat file holds index and say", open(beat).read() == "3\tHana climbs\n"))
+    checks.append(("control: the beat file is not left half-written", not os.path.exists(beat + '.tmp')))
+    write_beat(None, 4, "ignored")
+    checks.append(("control: no path writes nothing", open(beat).read() == "3\tHana climbs\n"))
+    os.remove(beat)
     failed = 0
     for name, ok in checks:
         print(f"{'PASS' if ok else 'FAIL'} {name}")
@@ -85,6 +102,7 @@ def main() -> int:
     ap.add_argument('--beats')
     ap.add_argument('--host', default='127.0.0.1')
     ap.add_argument('--hz', type=float, default=90.0)
+    ap.add_argument('--beat-file')
     ap.add_argument('--self-test', action='store_true')
     a = ap.parse_args()
     if a.self_test:
@@ -96,16 +114,21 @@ def main() -> int:
         sock.sendto(client_connect_packet(), (a.host, CONTROL_PORT))
         time.sleep(0.2)
     sent = 0
-    for b in beats:
+    due = time.monotonic()
+    for i, b in enumerate(beats):
         mask = 0
         for name in b.get("buttons", []):
             mask |= BUTTONS[name]
-        print(f"walk: {b['say']} ({b['seconds']:.2f} s)", flush=True)
+        write_beat(a.beat_file, i, b['say'])
+        print(f"walk: {datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]} beat {i} {b['say']} ({b['seconds']:.2f} s)",
+              flush=True)
         for _ in range(max(1, int(round(b["seconds"] * a.hz)))):
             sock.sendto(packet(b.get("left", (0.0, 0.0)), b.get("right", (0.0, 0.0)), mask), (a.host, TRACKING_PORT))
             sent += 1
-            time.sleep(dt)
-    print(f"walk: done, {sent} packets")
+            due += dt
+            time.sleep(max(0.0, due - time.monotonic()))
+    write_beat(a.beat_file, len(beats), "done")
+    print(f"walk: {datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]} done, {sent} packets")
     return 0
 
 
