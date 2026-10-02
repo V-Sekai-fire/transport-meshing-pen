@@ -68,12 +68,15 @@ jobs:
           grep -q "RESULT: PASS" loco.txt
       - name: The locomotion gate's controls (each must FAIL)
         run: |
-          for c in step_high no_resolve solid_land ulp; do
+          for pair in "step_high:wall stops" "no_resolve:wall stops" "solid_land:teleport refused" \
+              "no_floor:handrail top refused" "ulp:repeats bit for bit"; do
+            c=${pair%%:*}; want=${pair#*:}
             if timeout 900 "$GODOT" --headless --xr-mode off --path . --script tools/gate_locomotion.gd -- \
               --control=$c > "loco-$c.txt" 2>&1; then
               cat "loco-$c.txt"; echo "the gate passed with --control=$c"; exit 1
             fi
             grep -q "RESULT: FAIL" "loco-$c.txt" || { cat "loco-$c.txt"; echo "--control=$c did not reach a verdict"; exit 1; }
+            grep -q "^FAIL $want:" "loco-$c.txt" || { cat "loco-$c.txt"; echo "--control=$c did not fail $want"; exit 1; }
             grep "^FAIL" "loco-$c.txt"
           done
       - name: The persona walk driver's packet layout matches oxrsys's Protocol.h

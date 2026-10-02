@@ -1,9 +1,10 @@
 # The locomotion gate: the walker on the station's colliders in the MuJoCo guest, headless, at a fixed step.
 # PASS when it walks, climbs the forecourt stairs, is refused at a ledge and by the handrail, snap-turns,
-# teleports onto ground but not into a solid, and repeats bit for bit. Each control must FAIL:
-#   --control=step_high   step height 1.2 m, so the refused ledge is climbed
+# teleports onto ground and a tread but not into or onto a solid, and repeats bit for bit. Each control must FAIL:
+#   --control=step_high   step height 1.2 m, so the player band clears the 1.3 m handrail from a tread
 #   --control=no_resolve  walls are not resolved, so the handrail is walked through
 #   --control=solid_land  teleport ignores solids, so a target inside the handrail lands
+#   --control=no_floor    teleport skips the floor-under check, so a target centred in the handrail lands
 #   --control=ulp         the repeat run's input moves by one ulp, so the bits differ
 #   godot --headless --path . --script tools/gate_locomotion.gd -- [--control=...]
 extends SceneTree
@@ -77,6 +78,9 @@ func _run() -> void:
 	elif _control == "solid_land":
 		_stage_script = _script(stage_path, "func resolve(p: Vector2, feet_y: float) -> Vector2:\n",
 				"func resolve(p: Vector2, feet_y: float) -> Vector2:\n\treturn p\n")
+	elif _control == "no_floor":
+		_stage_script = _script(stage_path, "func floor_under(x: float, z: float, feet_y: float) -> bool:\n",
+				"func floor_under(x: float, z: float, feet_y: float) -> bool:\n\treturn true\n")
 	var st = _stage()
 	if st == null:
 		print("RESULT: FAIL (the guest did not load the station)")
@@ -123,8 +127,12 @@ func _run() -> void:
 			"onto the plaza 4 m ahead: %s" % landed)
 	var into: bool = w.teleport(Vector3(3.2, 0.6, -21.8))
 	var centre: bool = w.teleport(Vector3(3.4, 0.6, -21.8))
-	print("NOTE teleport with its centre inside the 8 cm handrail: %s" % centre)
 	_check("teleport refused", not into, "overlapping the handrail: %s" % into)
+	_check("handrail top refused", not centre,
+			"centred in the 8 cm handrail (a bit over a soda can's width): %s" % centre)
+	var tread: bool = w.teleport(Vector3(2.4, st.ground_height(2.4, -21.8, 1e9), -21.8))
+	_check("teleport onto a tread", tread and absf(w.pos.y - 0.536) < 0.01,
+			"beside the handrail, feet %.3f m (three treads up, about knee height): %s" % [w.pos.y, tread])
 
 	var a := _trace(PackedFloat64Array([0.0, 0.9]))
 	var b_in := PackedFloat64Array([0.0, 0.9])
