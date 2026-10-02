@@ -1,4 +1,5 @@
 # Loads xr_main flat, waits for the station, then walks, snap-turns and teleports the station player.
+# Then times 240 idle frames with the station and 240 with it freed, the baseline, and prints both.
 # --control=no_cooldown drops the snap-turn cooldown, so the second turn lands and the probe must FAIL.
 #   godot --headless --path . --xr-mode off -s tools/probe_player.gd -- [--control=no_cooldown]
 extends SceneTree
@@ -7,6 +8,9 @@ const PLAYER := "res://xr/station_player.gd"
 
 var _main: Node
 var _frames := 0
+var _failed = null
+var _ticks := []
+var _station_ms := 0.0
 
 
 func _initialize() -> void:
@@ -28,6 +32,8 @@ func _initialize() -> void:
 
 func _process(_dt: float) -> bool:
 	_frames += 1
+	if _failed != null:
+		return _time_frames()
 	var p = _main.get_node("World/StationPlayer")
 	if p.walker == null:
 		if _frames > 600:
@@ -67,7 +73,28 @@ func _process(_dt: float) -> bool:
 		"teleport": landed,
 		"radial": picks == [0, 1, 2, -1] and chose == "World grab" and grab_on and home < 1e-3,
 	}
-	var failed: Array = checks.keys().filter(func(k): return not checks[k])
-	print("RESULT: %s" % ("PASS" if failed.is_empty() else "FAIL (%s)" % ", ".join(failed)))
-	quit(0 if failed.is_empty() else 1)
+	_failed = checks.keys().filter(func(k): return not checks[k])
+	# Headless cannot draw, so each frame sleeps the low-processor delay; zero it so the timing is the work.
+	OS.low_processor_usage_mode_sleep_usec = 0
+	Engine.max_fps = 0
+	return false
+
+
+func _time_frames() -> bool:
+	_ticks.append(Time.get_ticks_usec())
+	if _ticks.size() < 241:
+		return false
+	var ms := []
+	for i in 240:
+		ms.append((_ticks[i + 1] - _ticks[i]) / 1000.0)
+	ms.sort()
+	_ticks.clear()
+	if _station_ms == 0.0:
+		_station_ms = ms[120]
+		_main.get_node("World/StationPlayer").free()
+		_main.get_node("World/Station").free()
+		return false
+	print("frame time: station %.3f ms, no station %.3f ms (baseline), median of 240 headless frames" % [_station_ms, ms[120]])
+	print("RESULT: %s" % ("PASS" if _failed.is_empty() else "FAIL (%s)" % ", ".join(_failed)))
+	quit(0 if _failed.is_empty() else 1)
 	return true
