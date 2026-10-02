@@ -1,6 +1,7 @@
-# A pen release on RFD 2293's ladder: on a tag, the Windows double engine from the
-# service-godot-build release tools/frame/releases.env pins, the vendored addon DLL, and
-# the guest ELFs, each engine and addon file checked against its release's SHA256SUMS.
+# A pen release on RFD 2293's ladder: on a tag, the macOS arm64 double engine from the
+# service-godot-build release tools/frame/releases.env pins, the vendored addon framework's
+# binary, and the guest ELFs, each engine and addon file checked against its release's
+# SHA256SUMS. The rung plays through the oxrsys runtime and simulator at OXRSYS_COMMIT.
 name: release
 on:
   push:
@@ -17,20 +18,19 @@ jobs:
           . tools/frame/releases.env
           echo "ENGINE_TAG=$ENGINE_TAG" >> "$GITHUB_ENV"
           echo "ADDON_TAG=$ADDON_TAG" >> "$GITHUB_ENV"
+          echo "OXRSYS_COMMIT=$OXRSYS_COMMIT" >> "$GITHUB_ENV"
           base=https://github.com/V-Sekai-fire/service-godot-build/releases/download
-          exe=godot.windows.editor.double.x86_64.llvm
-          dll=libgodot_riscv.windows.template_release.double.x86_64.dll
+          exe=godot.macos.editor.double.arm64
+          lib=libgodot_riscv.macos.template_release.double.universal
           mkdir -p release
           curl -fsSL -o engine.sums "$base/$ENGINE_TAG/SHA256SUMS"
           curl -fsSL -o addon.sums "$base/$ADDON_TAG/SHA256SUMS"
-          for f in "$exe.exe" "$exe.console.exe"; do
-            curl -fsSL -o "release/$f" "$base/$ENGINE_TAG/$f"
-            grep -q " $f\$" engine.sums
-            (cd release && grep " $f\$" ../engine.sums | sha256sum -c --quiet -)
-          done
-          cp "addons/godot_sandbox/bin/$dll" release/
-          grep -q " $dll\$" addon.sums
-          (cd release && grep " $dll\$" ../addon.sums | sha256sum -c --quiet -)
+          curl -fsSL -o "release/$exe" "$base/$ENGINE_TAG/$exe"
+          grep -q " $exe\$" engine.sums
+          (cd release && grep " $exe\$" ../engine.sums | sha256sum -c --quiet -)
+          cp "addons/godot_sandbox/bin/$lib.framework/$lib" release/
+          grep -q " $lib\$" addon.sums
+          (cd release && grep " $lib\$" ../addon.sums | sha256sum -c --quiet -)
       - name: The ELFs and one SHA256SUMS
         run: |
           cp ./*.elf release/
@@ -42,5 +42,5 @@ jobs:
           pre=
           case "$GITHUB_REF_NAME" in *-dev.*|*-beta.*|*-rc.*) pre=--prerelease ;; esac
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" $pre \
-            --notes "Pen ${GITHUB_SHA}. Engine ${ENGINE_TAG} and addon ${ADDON_TAG} from V-Sekai-fire/service-godot-build, each checked against its release's SHA256SUMS. Put it on the headset with tools/frame/push.sh ${GITHUB_REF_NAME}." \
+            --notes "Pen ${GITHUB_SHA}. macOS arm64 engine ${ENGINE_TAG} and addon ${ADDON_TAG} from V-Sekai-fire/service-godot-build, each checked against its release's SHA256SUMS. Play it through the oxrsys runtime and simulator at V-Sekai-fire/oxrsys ${OXRSYS_COMMIT}." \
             release/*
