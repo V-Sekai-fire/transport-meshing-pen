@@ -1,0 +1,92 @@
+[
+ {
+  "say": "Hana's headset connects",
+  "seconds": 4.0
+ },
+ {
+  "say": "Hana arrives and settles on the plaza",
+  "seconds": 3.0
+ },
+ {
+  "say": "Hana walks toward the station",
+  "seconds": 4.0,
+  "left": [
+   0.0,
+   0.9
+  ]
+ },
+ {
+  "say": "Hana stops and looks",
+  "seconds": 1.0
+ },
+ {
+  "say": "Hana snap-turns right",
+  "seconds": 0.25,
+  "right": [
+   0.9,
+   0.0
+  ]
+ },
+ {
+  "say": "Hana releases the stick",
+  "seconds": 0.75
+ },
+ {
+  "say": "Hana snap-turns back left",
+  "seconds": 0.25,
+  "right": [
+   -0.9,
+   0.0
+  ]
+ },
+ {
+  "say": "Hana releases the stick",
+  "seconds": 0.75
+ },
+ {
+  "say": "Hana aims a teleport ahead",
+  "seconds": 1.0,
+  "right": [
+   0.0,
+   0.9
+  ]
+ },
+ {
+  "say": "Hana releases to teleport",
+  "seconds": 1.0
+ },
+ {
+  "say": "Hana walks up to the forecourt stairs",
+  "seconds": 4.0,
+  "left": [
+   0.0,
+   0.9
+  ]
+ },
+ {
+  "say": "Hana stands on the forecourt",
+  "seconds": 1.5
+ },
+ {
+  "say": "Hana holds Y for the radial",
+  "seconds": 0.5,
+  "buttons": [
+   "Y"
+  ]
+ },
+ {
+  "say": "Hana tilts to World grab",
+  "seconds": 0.75,
+  "buttons": [
+   "Y"
+  ],
+  "left": [
+   0.0,
+   0.9
+  ]
+ },
+ {
+  "say": "Hana releases: world grab on",
+  "seconds": 1.5
+ }
+]
