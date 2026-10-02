@@ -79,5 +79,17 @@ jobs:
             grep -q "^FAIL $want:" "loco-$c.txt" || { cat "loco-$c.txt"; echo "--control=$c did not fail $want"; exit 1; }
             grep "^FAIL" "loco-$c.txt"
           done
+      - name: Player probe (xr_main's station player walks, snap-turns once per cooldown, teleports, radial)
+        run: |
+          timeout 900 "$GODOT" --headless --xr-mode off --path . -s tools/probe_player.gd | tee probe.txt
+          grep -q "^RESULT: PASS" probe.txt
+      - name: The player probe's control (no snap-turn cooldown must FAIL)
+        run: |
+          if timeout 900 "$GODOT" --headless --xr-mode off --path . -s tools/probe_player.gd -- \
+            --control=no_cooldown > probe-cold.txt 2>&1; then
+            cat probe-cold.txt; echo "the probe passed with no snap-turn cooldown"; exit 1
+          fi
+          cat probe-cold.txt
+          grep -q "^RESULT: FAIL (snap cooldown)" probe-cold.txt
       - name: The persona walk driver's packet layout matches oxrsys's Protocol.h
         run: python3 tools/walk_oxrsys.py --self-test

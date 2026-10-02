@@ -1,6 +1,9 @@
 # Loads xr_main flat, waits for the station, then walks, snap-turns and teleports the station player.
-#   godot --headless --path . --xr-mode off -s tools/probe_player.gd
+# --control=no_cooldown drops the snap-turn cooldown, so the second turn lands and the probe must FAIL.
+#   godot --headless --path . --xr-mode off -s tools/probe_player.gd -- [--control=no_cooldown]
 extends SceneTree
+
+const PLAYER := "res://xr/station_player.gd"
 
 var _main: Node
 var _frames := 0
@@ -8,6 +11,18 @@ var _frames := 0
 
 func _initialize() -> void:
 	_main = load("res://xr_main.tscn").instantiate()
+	if "--control=no_cooldown" in OS.get_cmdline_user_args():
+		var s := GDScript.new()
+		s.source_code = FileAccess.get_file_as_string(PLAYER).replace("const SNAP_COOLDOWN := 0.25", "const SNAP_COOLDOWN := 0.0")
+		s.reload()
+		var node: Node = _main.get_node("World/StationPlayer")
+		var kept := {}
+		for prop in node.get_property_list():
+			if prop.usage & PROPERTY_USAGE_SCRIPT_VARIABLE and prop.usage & PROPERTY_USAGE_STORAGE:
+				kept[prop.name] = node.get(prop.name)
+		node.set_script(s)
+		for k in kept:
+			node.set(k, kept[k])
 	get_root().add_child(_main)
 
 
@@ -46,7 +61,13 @@ func _process(_dt: float) -> bool:
 	r.release()
 	var home := Vector2(p.walker.pos.x - 1.6, p.walker.pos.z - 34.0).length()
 	print("radial: picks %s, chose %s, world grab %s, recentre %.3f m from the hero spot" % [picks, chose, grab_on, home])
-	var ok := picks == [0, 1, 2, -1] and chose == "World grab" and grab_on and home < 1e-3 and walked > 11.0 and walked < 13.0 and absf(absf(turned) - 30.0) < 0.01 and landed
-	print("RESULT: %s" % ("PASS" if ok else "FAIL"))
-	quit(0 if ok else 1)
+	var checks := {
+		"walk": walked > 11.0 and walked < 13.0,
+		"snap cooldown": absf(absf(turned) - 30.0) < 0.01,
+		"teleport": landed,
+		"radial": picks == [0, 1, 2, -1] and chose == "World grab" and grab_on and home < 1e-3,
+	}
+	var failed: Array = checks.keys().filter(func(k): return not checks[k])
+	print("RESULT: %s" % ("PASS" if failed.is_empty() else "FAIL (%s)" % ", ".join(failed)))
+	quit(0 if failed.is_empty() else 1)
 	return true
