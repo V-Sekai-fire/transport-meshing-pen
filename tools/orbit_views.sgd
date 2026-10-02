@@ -250,6 +250,9 @@ func _grab_views(p) -> void:
 
 func _grab_tick() -> void:
 	var canvas = _scene.get_node("World/XROrigin3D/Canvas")
+	if _grab_frame == 0:
+		get_root().disable_3d = true
+		_cap.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_grab_frame += 1
 	var cycle := (_grab_frame - 1) / 220
 	var f := (_grab_frame - 1) % 220
@@ -274,6 +277,9 @@ func _grab_tick() -> void:
 			_grab.scale, _grab.yaw, GRAB_CYCLES, GRAB_TURN])
 	for r in _rows.size():
 		_jobs.append({"row": r, "col": 1, "cam": _jobs[r].cam, "abs": true, "fov": 58.0})
+	get_root().disable_3d = false
+	if not _zero:
+		_cap.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_grabbed = true
 
 
