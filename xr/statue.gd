@@ -1,12 +1,12 @@
 # The dress-on statue beside the plaza monument: a body on a plinth that the XR pen draws on.
-# Maro (character-marocchino) is not in the pen yet, so the FoxGirl fixture stands in for it.
+# The body is Maro (character-marocchino), and the pipeline fits on Maro when run with avatar "maro".
 extends Node3D
 
 const ObjIO := preload("res://util/obj_io.gd")
 const XrWorld := preload("res://xr/xr_world.gd")
-const PLACEHOLDER_BODY := "res://fixtures/foxgirl/avatar.obj"
+const BODY := "res://fixtures/maro/avatar.obj"
 const PLINTH := Vector3(0.7, 0.2, 0.7)
-const BESIDE := 1.7
+const BESIDE := -1.7
 const REACH := 1.2
 const STONE := Color(0.78, 0.76, 0.72)
 
@@ -60,7 +60,7 @@ func place(physics, beside: float = BESIDE) -> bool:
 		return false
 	var b := Basis(Vector3.UP, monument.rot_y)
 	transform = Transform3D(b, monument.centre + b * Vector3(beside, 0, 0))
-	var m := ObjIO.read(PLACEHOLDER_BODY)
+	var m := ObjIO.read(BODY)
 	if m.has("error"):
 		push_warning("statue: " + m.error)
 		return false

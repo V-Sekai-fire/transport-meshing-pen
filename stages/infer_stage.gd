@@ -3,9 +3,10 @@
 # its fixtures, and the pipeline uses them only when --allow-fixture names
 # infer / rig (the run is then labelled FIXTURE):
 #
-#   infer: the FoxGirl body, fixtures/foxgirl/avatar.obj (1.7 m, Godot frame)
-#   rig:   FoxGirl's own skeleton, fixtures/foxgirl/skeleton.obj, through
-#          util/skeleton15.gd (identity for this rig)
+#   infer: fixtures/<avatar>/avatar.obj (Godot frame); avatar is foxgirl
+#          (1.7 m) unless opts.avatar names another, e.g. maro
+#   rig:   that body's own skeleton, fixtures/<avatar>/skeleton.obj, through
+#          util/skeleton15.gd
 #
 # When infer.elf lands, mesh_from_image / rig go here behind the same two
 # calls, and the fixtures stay as the flat control.
@@ -15,27 +16,32 @@ const ObjIO := preload("res://util/obj_io.gd")
 const Skeleton15 := preload("res://util/skeleton15.gd")
 const FIXTURE_DIR := "res://fixtures/foxgirl/"
 
+var avatar := "foxgirl"
+
 func _ready() -> void:
 	stage_name = "infer"
 	open_sandbox("res://infer.elf", 4096, 4096, 0, {}, PackedStringArray(["mesh_from_image"]))
 
 # {vertices, triangles, source} or {error}.
 func body_fixture() -> Dictionary:
-	var m := ObjIO.read(FIXTURE_DIR + "avatar.obj")
+	var m := ObjIO.read(_avatar_dir() + "avatar.obj")
 	if m.has("error"):
 		return {"error": m.error}
-	return {"vertices": m.v, "triangles": m.f, "source": "FIXTURE fixtures/foxgirl/avatar.obj"}
+	return {"vertices": m.v, "triangles": m.f, "source": "FIXTURE fixtures/%s/avatar.obj" % avatar}
 
 # {joints (45), bones (28), map, method, source} or {error}.
 func rig_fixture() -> Dictionary:
-	var m := ObjIO.read(FIXTURE_DIR + "skeleton.obj")
+	var m := ObjIO.read(_avatar_dir() + "skeleton.obj")
 	if m.has("error"):
 		return {"error": m.error}
 	var a := Skeleton15.adapt({"positions": m.v, "bones": m.l})
 	if a.error != "":
 		return {"error": a.error}
-	a["source"] = "FIXTURE fixtures/foxgirl/skeleton.obj (skeleton15 %s)" % a.method
+	a["source"] = "FIXTURE fixtures/%s/skeleton.obj (skeleton15 %s)" % [avatar, a.method]
 	return a
+
+func _avatar_dir() -> String:
+	return "res://fixtures/%s/" % avatar
 
 # The curvenet fixture: cloth-fit's LCL skirt on its own source skeleton.
 func garment_fixture() -> Dictionary:

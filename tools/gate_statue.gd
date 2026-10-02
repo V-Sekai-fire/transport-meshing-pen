@@ -72,7 +72,7 @@ func _process(_dt: float) -> bool:
 			_main.pipeline.strokes_ready.connect(func(s: Array): _strokes = s)
 			if _control == "canvas_frame":
 				_bridge.statue = null
-			var r: String = _main.dress_on_run_opts({"pen": "xr", "allow_fixture": "infer,rig", "stop_after": "MESH"})
+			var r: String = _main.dress_on_run_opts({"pen": "xr", "allow_fixture": "infer,rig", "avatar": "maro", "stop_after": "MESH"})
 			print("run: " + r)
 			_phase = "author"
 		"author":
@@ -97,7 +97,7 @@ func _process(_dt: float) -> bool:
 	return false
 
 func _measure_placement(physics) -> void:
-	var body_v: PackedFloat32Array = ObjIO.read(_statue.PLACEHOLDER_BODY).get("v", PackedFloat32Array())
+	var body_v: PackedFloat32Array = ObjIO.read(_statue.BODY).get("v", PackedFloat32Array())
 	var radius := Vector2(_statue.PLINTH.x, _statue.PLINTH.z).length() * 0.5
 	for i in body_v.size() / 3:
 		radius = maxf(radius, Vector2(body_v[3 * i], body_v[3 * i + 2]).length())
