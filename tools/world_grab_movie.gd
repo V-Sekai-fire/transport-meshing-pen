@@ -1,5 +1,6 @@
 # xr-grid's world grab on film: two scripted hands pinch the world, pull it close, roll it through a
-# full turn, shrink it to a 1/64 model, set it down and spin it, the station carried by the canvas's grab.
+# full turn, shrink it to a 1/64 model, set it down and spin it. The grab moves the viewer by its inverse,
+# so the world and its sun stay put and shadows keep their scale.
 #   godot --path . --xr-mode off --write-movie grab.avi --fixed-fps 30 --script tools/world_grab_movie.gd
 extends SceneTree
 
@@ -12,6 +13,10 @@ var _left := XRPositionalTracker.new()
 var _right := XRPositionalTracker.new()
 var _marks: Array = []
 var _cam := Camera3D.new()
+var _rig := Node3D.new()
+var _cam_rest := Transform3D()
+var _body: Node3D
+var _body_rest := Transform3D()
 var _plan: Array = []
 var _f := -1
 var _origin := Transform3D()
@@ -78,6 +83,10 @@ func _process(_dt: float) -> bool:
 		_canvas.enabled = true
 		_canvas_rest = _canvas.transform
 		_station_rest = _station.global_transform
+		_body = _canvas.get_node("Body")
+		_body_rest = _body.global_transform
+		get_root().add_child(_rig)
+		_rig.global_transform = _origin
 		for c in [Color(0.3, 0.6, 1.0), Color(1.0, 0.45, 0.3)]:
 			var m := MeshInstance3D.new()
 			var s := SphereMesh.new()
@@ -89,13 +98,14 @@ func _process(_dt: float) -> bool:
 			mat.emission = c
 			s.material = mat
 			m.mesh = s
-			origin.add_child(m)
+			_rig.add_child(m)
 			_marks.append(m)
 		_cam.fov = 75.0
 		_cam.near = 0.02
 		_cam.far = 2500.0
 		get_root().add_child(_cam)
 		_cam.global_transform = _origin * Transform3D(Basis.from_euler(Vector3(deg_to_rad(-25.0), 0.0, 0.0)), Vector3(0.0, 1.6, 0.0))
+		_cam_rest = _cam.global_transform
 		_cam.make_current()
 		_pose = {"mid": MID, "half": 0.3, "roll": 0.0, "yaw": 0.0}
 		_f = 0
@@ -110,7 +120,11 @@ func _process(_dt: float) -> bool:
 			break
 		k -= int(seg.n)
 	var d: Transform3D = _canvas.transform * _canvas_rest.affine_inverse()
-	_station.global_transform = _origin * d * _origin.affine_inverse() * _station_rest
+	var v: Transform3D = _origin * d.affine_inverse() * _origin.affine_inverse()
+	_rig.global_transform = v * _origin
+	var c: Transform3D = v * _cam_rest
+	_cam.global_transform = Transform3D(c.basis.orthonormalized(), c.origin)
+	_body.global_transform = _body_rest
 	if _f >= _frames():
 		print("RESULT: PASS (%d frames, world scale %.3f, basis %s, origin %s)" % [_f, d.basis.get_scale().x,
 				str(d.basis.orthonormalized().get_euler(EULER_ORDER_YXZ) * 180.0 / PI), str(d.origin)])
