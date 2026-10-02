@@ -1,19 +1,16 @@
-# A world-grab clip: the visitor stands on the plaza, two scripted hand pinches turn the whole world
-# about them and a last one shrinks it to a model, filmed from a fixed viewer camera.
-#   godot --path . --xr-mode off --write-movie grab.avi --fixed-fps 30 --resolution 1920x1080 \
-#       --script tools/world_grab_movie.gd
+# xr-grid's world grab on film: two scripted hands pinch the world, pull it close, roll it through a
+# full turn, shrink it to a 1/64 model, set it down and spin it, the station carried by the canvas's grab.
+#   godot --path . --xr-mode off --write-movie grab.avi --fixed-fps 30 --script tools/world_grab_movie.gd
 extends SceneTree
 
-const HAND_Y := 1.2
-const HAND_Z := -0.4
-const TURNS := 6
-const TURN := 30.0
+const MID := Vector3(0.0, 1.25, -0.45)
 
 var _scene: Node
 var _station: Node3D
 var _canvas: Node3D
 var _left := XRPositionalTracker.new()
 var _right := XRPositionalTracker.new()
+var _marks: Array = []
 var _cam := Camera3D.new()
 var _plan: Array = []
 var _f := -1
@@ -21,6 +18,7 @@ var _origin := Transform3D()
 var _canvas_rest := Transform3D()
 var _station_rest := Transform3D()
 var _t0 := Time.get_ticks_msec()
+var _pose := {"mid": MID, "half": 0.3, "roll": 0.0, "yaw": 0.0}
 
 
 func _initialize() -> void:
@@ -30,21 +28,37 @@ func _initialize() -> void:
 		t[0].name = t[1]
 		t[0].hand = t[2]
 		XRServer.add_tracker(t[0])
-	_hands(0.4, 0.0, 0.0)
 	_scene = load("res://xr_main.tscn").instantiate()
 	_station = _scene.get_node("World/Station")
 	get_root().add_child(_scene)
-	for i in TURNS:
-		_plan.append([30, 0.4, 0.0, 0.4, 0.0, 0.0])
-		_plan.append([20, 0.4, 0.0, 0.4, 0.0, 1.0])
-		_plan.append([45, 0.4, 0.0, 0.4, TURN, 1.0])
-		_plan.append([10, 0.4, TURN, 0.4, TURN, 0.0])
-		_plan.append([15, 0.4, TURN, 0.4, 0.0, 0.0])
-	_plan.append([30, 0.4, 0.0, 0.4, 0.0, 0.0])
-	_plan.append([20, 0.4, 0.0, 0.4, 0.0, 1.0])
-	_plan.append([75, 0.4, 0.0, 0.1, 45.0, 1.0])
-	_plan.append([10, 0.1, 45.0, 0.1, 45.0, 0.0])
-	_plan.append([90, 0.4, 0.0, 0.4, 0.0, 0.0])
+	_hold(30)
+	_grab(45, {"mid": MID + Vector3(0.0, 0.0, 0.3)})
+	for i in 3:
+		_grab(50, {"roll": 60.0})
+	for i in 3:
+		_grab(50, {"roll": 60.0})
+	for i in 3:
+		_grab(60, {"half": 0.075})
+	_grab(45, {"mid": MID + Vector3(0.0, -0.35, -0.1)})
+	for i in 4:
+		_grab(45, {"yaw": 90.0})
+	_hold(60)
+	_apply(_pose)
+
+
+func _hold(n: int) -> void:
+	_plan.append({"n": n, "from": _pose.duplicate(), "to": _pose.duplicate(), "grip": 0.0})
+
+
+func _grab(n: int, change: Dictionary, half := 0.3) -> void:
+	var start := {"mid": MID, "half": half, "roll": 0.0, "yaw": 0.0}
+	var end := start.duplicate()
+	end.merge(change, true)
+	_plan.append({"n": 15, "from": _pose.duplicate(), "to": start, "grip": 0.0})
+	_plan.append({"n": 25, "from": start, "to": start, "grip": 1.0})
+	_plan.append({"n": n, "from": start, "to": end, "grip": 1.0})
+	_plan.append({"n": 15, "from": end, "to": end, "grip": 0.0})
+	_pose = end
 
 
 func _process(_dt: float) -> bool:
@@ -64,29 +78,44 @@ func _process(_dt: float) -> bool:
 		_canvas.enabled = true
 		_canvas_rest = _canvas.transform
 		_station_rest = _station.global_transform
-		_cam.fov = 70.0
+		for c in [Color(0.3, 0.6, 1.0), Color(1.0, 0.45, 0.3)]:
+			var m := MeshInstance3D.new()
+			var s := SphereMesh.new()
+			s.radius = 0.035
+			s.height = 0.07
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = c
+			mat.emission_enabled = true
+			mat.emission = c
+			s.material = mat
+			m.mesh = s
+			origin.add_child(m)
+			_marks.append(m)
+		_cam.fov = 75.0
+		_cam.near = 0.02
 		_cam.far = 2500.0
 		get_root().add_child(_cam)
-		_cam.global_transform = _origin * Transform3D(Basis.from_euler(Vector3(deg_to_rad(-10.0), 0.0, 0.0)), Vector3(0.0, 1.6, 0.0))
+		_cam.global_transform = _origin * Transform3D(Basis.from_euler(Vector3(deg_to_rad(-25.0), 0.0, 0.0)), Vector3(0.0, 1.6, 0.0))
 		_cam.make_current()
+		_pose = {"mid": MID, "half": 0.3, "roll": 0.0, "yaw": 0.0}
 		_f = 0
 		print("world_grab_movie: station built, filming from the plaza")
 		return false
 	var k := _f
 	for seg in _plan:
-		if k < int(seg[0]):
-			var a: float = float(k) / seg[0]
-			_hands(lerpf(seg[1], seg[3], a), lerpf(seg[2], seg[4], a), seg[5])
+		if k < int(seg.n):
+			var a: float = smoothstep(0.0, 1.0, float(k) / seg.n)
+			_apply({"mid": seg.from.mid.lerp(seg.to.mid, a), "half": lerpf(seg.from.half, seg.to.half, a),
+					"roll": lerpf(seg.from.roll, seg.to.roll, a), "yaw": lerpf(seg.from.yaw, seg.to.yaw, a)}, seg.grip)
 			break
-		k -= int(seg[0])
-	if _f >= _frames():
-		var d: Transform3D = _canvas.transform * _canvas_rest.affine_inverse()
-		print("RESULT: PASS (%d frames, world scale %.3f, yaw %.1f deg)" % [_f, d.basis.get_scale().x,
-				rad_to_deg(d.basis.orthonormalized().get_euler().y)])
-		quit(0)
-		return true
+		k -= int(seg.n)
 	var d: Transform3D = _canvas.transform * _canvas_rest.affine_inverse()
 	_station.global_transform = _origin * d * _origin.affine_inverse() * _station_rest
+	if _f >= _frames():
+		print("RESULT: PASS (%d frames, world scale %.3f, basis %s, origin %s)" % [_f, d.basis.get_scale().x,
+				str(d.basis.orthonormalized().get_euler(EULER_ORDER_YXZ) * 180.0 / PI), str(d.origin)])
+		quit(0)
+		return true
 	_f += 1
 	return false
 
@@ -94,13 +123,17 @@ func _process(_dt: float) -> bool:
 func _frames() -> int:
 	var n := 0
 	for seg in _plan:
-		n += int(seg[0])
+		n += int(seg.n)
 	return n
 
 
-func _hands(half: float, turn_deg: float, grip: float) -> void:
-	var mid := Vector3(0.0, HAND_Y, HAND_Z)
-	var off := Vector3(half, 0.0, 0.0).rotated(Vector3.UP, deg_to_rad(turn_deg))
-	for t in [[_left, mid - off], [_right, mid + off]]:
-		t[0].set_pose(&"default", Transform3D(Basis(), t[1]), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
-		t[0].set_input(&"grip", grip)
+func _apply(p: Dictionary, grip := 0.0) -> void:
+	var b := Basis.from_euler(Vector3(0.0, deg_to_rad(p.yaw), deg_to_rad(p.roll)), EULER_ORDER_YXZ)
+	var off: Vector3 = b * Vector3(p.half, 0.0, 0.0)
+	var hands := [[_left, p.mid - off], [_right, p.mid + off]]
+	for i in hands.size():
+		hands[i][0].set_pose(&"default", Transform3D(Basis(), hands[i][1]), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		hands[i][0].set_input(&"grip", grip)
+		if i < _marks.size():
+			_marks[i].position = hands[i][1]
+			_marks[i].scale = Vector3.ONE * (1.4 if grip > 0.0 else 1.0)
