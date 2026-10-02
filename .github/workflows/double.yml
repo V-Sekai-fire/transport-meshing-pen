@@ -50,6 +50,21 @@ jobs:
           fi
           echo "--- drop.txt ---"; cat drop.txt
           grep -q "RESULT: FAIL (FAILED(MESH:" drop.txt
+      - name: Statue gate (Maro's stand-in beside the monument, drawn on with the pen, wears the garment)
+        run: |
+          timeout 300 "$GODOT" --headless --xr-mode off --path . --script tools/gate_statue.gd | tee statue.txt
+          grep -q "^RESULT: PASS" statue.txt
+      - name: The statue gate's controls (each must FAIL)
+        run: |
+          for pair in "on_monument:clears the station" "canvas_frame:strokes on the statue"; do
+            c=${pair%%:*}; want=${pair#*:}
+            if timeout 300 "$GODOT" --headless --xr-mode off --path . --script tools/gate_statue.gd -- \
+              --control=$c > "statue-$c.txt" 2>&1; then
+              cat "statue-$c.txt"; echo "the gate passed with --control=$c"; exit 1
+            fi
+            grep -q "^FAIL $want:" "statue-$c.txt" || { cat "statue-$c.txt"; echo "--control=$c did not fail $want"; exit 1; }
+            grep "^FAIL" "statue-$c.txt"
+          done
       - name: World grab gate (two grips carry and scale the station)
         run: |
           timeout 300 "$GODOT" --headless --fixed-fps 60 --path . --script tools/gate_world_grab.gd | tee grab.txt

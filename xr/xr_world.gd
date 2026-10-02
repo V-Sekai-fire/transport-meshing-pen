@@ -68,6 +68,9 @@ func attach(m) -> void:
 	var bridge = get_node_or_null("PenBridge")
 	if bridge != null:
 		bridge.attach(p)
+	var statue = get_node_or_null("Station/Statue")
+	if statue != null:
+		statue.attach(p)
 
 func _mat(c: Color, alpha: float = 1.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -78,7 +81,7 @@ func _mat(c: Color, alpha: float = 1.0) -> StandardMaterial3D:
 	return m
 
 # mesh_wire's ArrayMesh with smooth normals, so the screenshot shows shape.
-func _shaded(v: PackedFloat32Array, f: PackedInt32Array) -> ArrayMesh:
+static func _shaded(v: PackedFloat32Array, f: PackedInt32Array) -> ArrayMesh:
 	var m := MeshWire.to_array_mesh(v, f)
 	if m.get_surface_count() == 0:
 		return m

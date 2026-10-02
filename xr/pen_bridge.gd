@@ -24,9 +24,12 @@ const MAX_SIZE := 0.01 # hand.gd: sketch_tool.pressure = trigger * max_size
 
 @export var tools: Array[NodePath] = []
 @export var body_path: NodePath
+@export var statue_path: NodePath
 
 var pipeline = null
 var body: Node3D = null
+var statue = null
+var _frame_of := {}
 var _prev := {}
 var _stroke_of := {}
 var _next_stroke := 0
@@ -45,6 +48,7 @@ func attach(p) -> void:
 	pipeline.pen_external = true
 	pipeline.strokes_ready.connect(_on_strokes)
 	body = get_node_or_null(body_path)
+	statue = get_node_or_null(statue_path) if not statue_path.is_empty() else null
 	var strokes_node = body.get_node_or_null("strokes") if body != null else null
 	if strokes_node != null:
 		# SimpleSketch (class_name in the addon), made from its path.
@@ -134,7 +138,10 @@ func _forward_tools() -> void:
 			continue
 		var active: bool = t.active
 		var was: bool = _prev.get(path, false)
-		var p: Vector3 = body.to_local(t.global_transform.origin)
+		var g: Vector3 = t.global_transform.origin
+		if active and not was:
+			_frame_of[path] = statue.body if statue != null and statue.reaches(g) else body
+		var p: Vector3 = _frame_of.get(path, body).to_local(g)
 		var pressure := clampf(float(t.pressure) / MAX_SIZE, 0.0, 1.0)
 		if active and not was:
 			_stroke_of[path] = _next_stroke

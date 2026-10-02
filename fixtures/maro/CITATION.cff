@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: If you use these files, cite character-marocchino, the USD character they come from.
+title: Maro body and skeleton, the dress-on statue's fixtures (from character-marocchino)
+abstract: >-
+  The dress-on statue's body (xr/statue.gd) and the infer and rig fixtures when
+  the pipeline runs with avatar "maro": from chibifire-stages/character-marocchino,
+  usd/Marocchino.usda. Body and head meshes only, no wardrobe:
+  /Marocchino/Armature/Maro_Ms_Body_VRC/Noir_Ms_Stockings_HP_002 and
+  /Marocchino/Armature/Body/Maro -> avatar.obj, triangulated. The skeleton's
+  bind pose, picked into util/skeleton15.gd's slot order -> skeleton.obj, with
+  the bone list copied from fixtures/foxgirl/skeleton.obj. Local adaptations,
+  all made by tools/maro_fixture.py: USD's frame (+Z up, metres) becomes
+  Godot's, (x, y, z) -> (x, z, -y), then y is shifted so the lowest vertex is
+  on y = 0; no scaling (1.69 m). Only v, f and l records are kept.
+authors:
+  - name: K. S. Ernest (iFire) Lee
+repository-code: https://github.com/chibifire-stages/character-marocchino
+license: Apache-2.0

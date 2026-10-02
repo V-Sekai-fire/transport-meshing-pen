@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://addons/sakuragaoka_station/station.tscn" id="8_station"]
@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://xr/rx/xr_component_hand_movement.gd" id="11_move"]
 [ext_resource type="Script" path="res://xr/rx/xr_component_hand_rotation.gd" id="12_turn"]
 [ext_resource type="Script" path="res://xr/radial_menu.gd" id="13_radial"]
+[ext_resource type="Script" path="res://xr/statue.gd" id="14_statue"]
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_strokes"]
 
@@ -31,6 +32,9 @@ script = ExtResource("2_world")
 
 [node name="Station" parent="World" instance=ExtResource("8_station")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 11.4)
+
+[node name="Statue" type="Node3D" parent="World/Station"]
+script = ExtResource("14_statue")
 
 [node name="StationPlayer" type="Node3D" parent="World"]
 script = ExtResource("10_player")
@@ -109,6 +113,7 @@ mesh = SubResource("ArrayMesh_strokes")
 script = ExtResource("3_bridge")
 tools = Array[NodePath]([NodePath("../XROrigin3D/hand_left/SketchTool"), NodePath("../XROrigin3D/hand_right/SketchTool")])
 body_path = NodePath("../XROrigin3D/Canvas/Body")
+statue_path = NodePath("../Station/Statue")
 
 [node name="CompanionPens" type="Node" parent="World"]
 script = ExtResource("6_companions")

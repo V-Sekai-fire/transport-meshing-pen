@@ -2,8 +2,8 @@
 #
 #   IDLE -> INFER -> RIG -> AUTHOR -> MESH -> DONE | FAILED(reason)
 #
-# INFER   body mesh (infer.elf; today only the FoxGirl fixture)
-# RIG     15-joint skeleton (infer.elf's rig; today FoxGirl's own, via skeleton15)
+# INFER   body mesh (infer.elf; today the opts.avatar fixture, FoxGirl or Maro)
+# RIG     15-joint skeleton (infer.elf's rig; today that fixture's own, via skeleton15)
 # AUTHOR  pen events -> curvenet pen_begin/point/end, then curvenet_build
 # MESH    mesh_build on curvenet's worker thread -> garment shell + its rims
 #
@@ -58,6 +58,7 @@ const DEFAULTS := {
 	"allow_fixture": [],       # stage keys, or one comma-separated String
 	"force_fixture": [],       # stages run as their fixture even when present (to reach what follows them)
 	"pen": "scripted",        # scripted | xr
+	"avatar": "foxgirl",      # the infer/rig fixture body under fixtures/: foxgirl | maro
 	"drop_seam": false,       # control: the back seam is not drawn, or seam_back is dropped from strokes_from
 	                          # -> FAILED(MESH)
 	"closed_rings": false,
@@ -99,12 +100,14 @@ func start(o: Dictionary = {}) -> String:
 	reason = ""
 	_stroke_ids = {}
 	_run_t0 = Time.get_ticks_msec()
+	if infer != null:
+		infer.avatar = str(opts.avatar)
 	for s in [infer, curvenet]:
 		if s != null:
 			s.take_vm_us()
 	_goto("INFER")
-	return "STARTED allow_fixture=%s force_fixture=%s pen=%s" % [",".join(opts.allow_fixture),
-			",".join(opts.force_fixture), opts.pen]
+	return "STARTED allow_fixture=%s force_fixture=%s pen=%s avatar=%s" % [",".join(opts.allow_fixture),
+			",".join(opts.force_fixture), opts.pen, opts.avatar]
 
 # Pen events from a bridge (body-local). kind: begin | point | end.
 # boundary (begin only): the stroke is the edge of an opening (curvenet's
