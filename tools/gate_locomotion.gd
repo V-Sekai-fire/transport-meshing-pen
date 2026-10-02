@@ -1,7 +1,6 @@
 # The locomotion gate: the walker on the station's colliders in the MuJoCo guest, headless, at a fixed step.
 # PASS when it walks, climbs the forecourt stairs, is refused at a ledge and by the handrail, snap-turns,
-# teleports onto ground and a tread but not into or onto a solid, and repeats bit for bit.
-# Each control must FAIL:
+# teleports onto ground and a tread but not into or onto a solid, and repeats. Each control must FAIL:
 #   --control=step_high   step height 1.2 m, so the player band clears the 1.3 m handrail from a tread
 #   --control=no_resolve  walls are not resolved, so the handrail is walked through
 #   --control=solid_land  teleport drops its own push-out refusal, resolve intact, so the handrail is landed in

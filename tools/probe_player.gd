@@ -74,7 +74,6 @@ func _process(_dt: float) -> bool:
 		"radial": picks == [0, 1, 2, -1] and chose == "World grab" and grab_on and home < 1e-3,
 	}
 	_failed = checks.keys().filter(func(k): return not checks[k])
-	# Headless cannot draw, so each frame sleeps the low-processor delay; zero it so the timing is the work.
 	OS.low_processor_usage_mode_sleep_usec = 0
 	Engine.max_fps = 0
 	return false
