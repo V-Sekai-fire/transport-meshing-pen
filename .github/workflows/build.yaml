@@ -13,6 +13,10 @@ env:
   ITCH_IO_PUBLISH: 'true'
   # Set ITCH_IO_API_KEY in Repository Secrets
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
