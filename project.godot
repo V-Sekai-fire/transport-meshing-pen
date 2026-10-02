@@ -59,3 +59,30 @@ binary_translation/enabled=false
 
 openxr/enabled=true
 shaders/enabled=true
+
+[input]
+
+move_forwards={
+"deadzone": 0.2,
+"events": []
+}
+move_backwards={
+"deadzone": 0.2,
+"events": []
+}
+move_left={
+"deadzone": 0.2,
+"events": []
+}
+move_right={
+"deadzone": 0.2,
+"events": []
+}
+rotate_camera_left={
+"deadzone": 0.2,
+"events": []
+}
+rotate_camera_right={
+"deadzone": 0.2,
+"events": []
+}
