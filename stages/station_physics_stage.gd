@@ -91,3 +91,22 @@ func _box_record(b: Dictionary, mocap: float) -> PackedFloat64Array:
 	var q := Quaternion(Vector3.UP, b.get("rotY", 0.0))
 	return PackedFloat64Array([0, b.cx, (y0 + y1) / 2.0, b.cz, b.w / 2.0, (y1 - y0) / 2.0, b.d / 2.0,
 			q.w, q.x, q.y, q.z, mocap])
+
+
+## The first walkable point along a ray, station frame: walk tops from the guest, terrain from
+## height_at marched in 0.25 m steps. null when nothing within maxdist.
+func ray_walkable(origin: Vector3, dir: Vector3, maxdist: float):
+	var d := dir.normalized()
+	var best := maxdist
+	var hit = call_now("mjc_ray_group", [PackedFloat64Array([origin.x, origin.y, origin.z]),
+			PackedFloat64Array([d.x, d.y, d.z]), maxdist, _player, WALKABLE])
+	if typeof(hit) == TYPE_PACKED_FLOAT64_ARRAY and hit.size() == 9 and hit[0] == 1.0:
+		best = hit[1]
+	var t := 0.0
+	while t < best:
+		var q := origin + d * t
+		if q.y <= _height_at.call(q.x, q.z):
+			best = t
+			break
+		t += 0.25
+	return origin + d * best if best < maxdist else null

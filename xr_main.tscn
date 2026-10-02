@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://addons/sakuragaoka_station/station.tscn" id="8_station"]
@@ -9,6 +9,9 @@
 [ext_resource type="Script" path="res://xr/companion_pens.gd" id="6_companions"]
 [ext_resource type="Shader" path="res://addons/procedural_3d_grid/core/simple_sketcher/simple_sketch.gdshader" id="7_strokes"]
 [ext_resource type="Script" path="res://addons/procedural_3d_grid/core/xr_pinch.gd" id="9_pinch"]
+[ext_resource type="Script" path="res://xr/station_player.gd" id="10_player"]
+[ext_resource type="Script" path="res://xr/rx/xr_component_hand_movement.gd" id="11_move"]
+[ext_resource type="Script" path="res://xr/rx/xr_component_hand_rotation.gd" id="12_turn"]
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_strokes"]
 
@@ -24,6 +27,17 @@ script = ExtResource("1_main")
 
 [node name="World" type="Node3D" parent="."]
 script = ExtResource("2_world")
+
+[node name="Station" parent="World" instance=ExtResource("8_station")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 11.4)
+
+[node name="StationPlayer" type="Node3D" parent="World"]
+script = ExtResource("10_player")
+station_path = NodePath("../Station")
+origin_path = NodePath("../XROrigin3D")
+camera_path = NodePath("../XROrigin3D/XRCamera3D")
+flat_camera_path = NodePath("../FlatCamera")
+aim_hand_path = NodePath("../XROrigin3D/hand_right")
 
 [node name="FlatCamera" type="Camera3D" parent="World"]
 transform = Transform3D(1, 0, 0, 0, 0.994522, 0.104528, 0, -0.104528, 0.994522, 0, 1.05, 2.4)
@@ -47,6 +61,9 @@ color = Color(0.980392, 0.827451, 0.0745098, 1)
 [node name="Tip" type="MeshInstance3D" parent="World/XROrigin3D/hand_left"]
 mesh = SubResource("Sphere_tip")
 
+[node name="Movement" type="Node" parent="World/XROrigin3D/hand_left"]
+script = ExtResource("11_move")
+
 [node name="hand_right" type="XRController3D" parent="World/XROrigin3D"]
 tracker = &"right_hand"
 script = ExtResource("4_hand")
@@ -59,14 +76,14 @@ color = Color(0.0745098, 0.101961, 0.643137, 1)
 [node name="Tip" type="MeshInstance3D" parent="World/XROrigin3D/hand_right"]
 mesh = SubResource("Sphere_tip")
 
+[node name="Rotation" type="Node" parent="World/XROrigin3D/hand_right"]
+script = ExtResource("12_turn")
+
 [node name="Canvas" type="Node3D" parent="World/XROrigin3D" node_paths=PackedStringArray("hand_left", "hand_right")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.2)
 script = ExtResource("9_pinch")
 hand_left = NodePath("../hand_left")
 hand_right = NodePath("../hand_right")
-
-[node name="Station" parent="World/XROrigin3D/Canvas" instance=ExtResource("8_station")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 11.4)
 
 [node name="Body" type="Node3D" parent="World/XROrigin3D/Canvas"]
 
