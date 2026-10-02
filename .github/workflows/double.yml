@@ -68,13 +68,33 @@ jobs:
           grep -q "RESULT: PASS" loco.txt
       - name: The locomotion gate's controls (each must FAIL)
         run: |
-          for c in step_high no_resolve solid_land ulp; do
+          for pair in "step_high:wall stops" "no_resolve:wall stops" "solid_land:teleport refused" \
+              "no_floor:handrail top refused" "ulp:repeats bit for bit"; do
+            c=${pair%%:*}; want=${pair#*:}
             if timeout 900 "$GODOT" --headless --xr-mode off --path . --script tools/gate_locomotion.gd -- \
               --control=$c > "loco-$c.txt" 2>&1; then
               cat "loco-$c.txt"; echo "the gate passed with --control=$c"; exit 1
             fi
             grep -q "RESULT: FAIL" "loco-$c.txt" || { cat "loco-$c.txt"; echo "--control=$c did not reach a verdict"; exit 1; }
+            grep -q "^FAIL $want:" "loco-$c.txt" || { cat "loco-$c.txt"; echo "--control=$c did not fail $want"; exit 1; }
             grep "^FAIL" "loco-$c.txt"
           done
-      - name: The persona walk driver's packet layout matches oxrsys's Protocol.h
+      - name: Player probe (xr_main's station player walks, snap-turns once per cooldown, teleports, radial)
+        run: |
+          timeout 900 "$GODOT" --headless --xr-mode off --path . -s tools/probe_player.gd | tee probe.txt
+          grep -q "^RESULT: PASS" probe.txt
+      - name: The player probe's control (no snap-turn cooldown must FAIL)
+        run: |
+          if timeout 900 "$GODOT" --headless --xr-mode off --path . -s tools/probe_player.gd -- \
+            --control=no_cooldown > probe-cold.txt 2>&1; then
+            cat probe-cold.txt; echo "the probe passed with no snap-turn cooldown"; exit 1
+          fi
+          cat probe-cold.txt
+          grep -q "^RESULT: FAIL (snap cooldown)" probe-cold.txt
+      - name: The persona stairs judge and its controls (a skipped tread, a dip, no climb, a rising fall)
+        run: |
+          timeout 300 "$GODOT" --headless --xr-mode off --path . -s tools/persona_capture.gd -- --self-test | tee stairs.txt
+          grep -q "^RESULT: PASS" stairs.txt
+          test "$(grep -c '^PASS control:' stairs.txt)" = 4
+      - name: The persona walk driver's packet layout and beat file
         run: python3 tools/walk_oxrsys.py --self-test

@@ -157,6 +157,8 @@ func teleport(target: Vector3) -> bool:
 	var p: Vector2 = physics.resolve(Vector2(target.x, target.z), g)
 	if p.distance_to(Vector2(target.x, target.z)) > 1e-3 or absf(g - target.y) > STEP_HEIGHT:
 		return false
+	if not physics.floor_under(target.x, target.z, g):
+		return false
 	pos = Vector3(target.x, g, target.z)
 	vel = Vector3.ZERO
 	vy = 0.0

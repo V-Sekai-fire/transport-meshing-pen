@@ -2,7 +2,7 @@
 # resolve answered by the guest, so the walk is bit-deterministic and migrates with the VM.
 extends "res://stages/stage_base.gd"
 
-const REQUIRED := ["mjc_load_primitives", "mjc_ray_group", "mjc_player_band", "mjc_player_contacts",
+const REQUIRED := ["mjc_load_primitives", "mjc_ray", "mjc_ray_group", "mjc_player_band", "mjc_player_contacts",
 		"mjc_set_qpos", "mjc_forward", "mjc_mocap_set"]
 const STRIDE := 12
 const WALKABLE := 1
@@ -11,6 +11,7 @@ const RESOLVE_ITERATIONS := 3
 
 var _height_at: Callable
 var _player := -1
+var _height := 1.7
 var _mocaps := 0
 
 
@@ -25,6 +26,7 @@ func load_station(physics, layout, radius: float, height: float) -> int:
 	if not available():
 		return -1
 	_height_at = layout.height_at
+	_height = height
 	var prims := PackedFloat64Array(physics.prims)
 	var boxes: Array = physics.dynamic_boxes()
 	_mocaps = boxes.size()
@@ -55,6 +57,27 @@ func ground_height(x: float, z: float, feet_y: float) -> float:
 	if typeof(hit) == TYPE_PACKED_FLOAT64_ARRAY and hit.size() == 9 and hit[0] == 1.0:
 		return hit[3]
 	return _height_at.call(x, z)
+
+
+## Ground the body may land on at x, z: from its top down, the first hit is a walk top within a step of
+## feet_y, or nothing solid stands over terrain within a step.
+func floor_under(x: float, z: float, feet_y: float) -> bool:
+	var o := PackedFloat64Array([x, feet_y + _height, z])
+	var down := PackedFloat64Array([0.0, -1.0, 0.0])
+	var walk = call_now("mjc_ray_group", [o, down, _height + 200.0, _player, WALKABLE])
+	var any = call_now("mjc_ray", [o, down, _height + 200.0, _player])
+	var y: float = _height_at.call(x, z)
+	if _hit(walk):
+		if _hit(any) and any[1] < walk[1] - 1e-6:
+			return false
+		y = walk[3]
+	elif _hit(any) and any[3] > y:
+		return false
+	return absf(y - feet_y) <= STEP_HEIGHT
+
+
+func _hit(r) -> bool:
+	return typeof(r) == TYPE_PACKED_FLOAT64_ARRAY and r.size() == 9 and r[0] == 1.0
 
 
 ## physics.js's resolve: push the circle out of every solid overlapping the band, in up to three passes.

@@ -4,11 +4,16 @@
   "seconds": 4.0
  },
  {
-  "say": "Hana arrives and settles on the plaza",
-  "seconds": 3.0
+  "say": "Hana arrives on the platform off the train",
+  "seconds": 3.0,
+  "arrive": [
+   9.06,
+   -37.0,
+   180.0
+  ]
  },
  {
-  "say": "Hana walks toward the station",
+  "say": "Hana walks through the ticket gates",
   "seconds": 4.0,
   "left": [
    0.0,
@@ -16,8 +21,36 @@
   ]
  },
  {
-  "say": "Hana stops and looks",
-  "seconds": 1.0
+  "say": "Hana sidesteps to the entrance",
+  "seconds": 1.75,
+  "left": [
+   0.9,
+   0.0
+  ]
+ },
+ {
+  "say": "Hana stops in front of the entrance",
+  "seconds": 0.5
+ },
+ {
+  "say": "Hana walks out onto the forecourt",
+  "seconds": 1.2,
+  "left": [
+   0.0,
+   0.9
+  ]
+ },
+ {
+  "say": "Hana walks down the forecourt stairs",
+  "seconds": 1.6,
+  "left": [
+   0.0,
+   0.9
+  ]
+ },
+ {
+  "say": "Hana steps onto the plaza",
+  "seconds": 0.8
  },
  {
   "say": "Hana snap-turns right",
@@ -29,22 +62,82 @@
  },
  {
   "say": "Hana releases the stick",
-  "seconds": 0.75
+  "seconds": 0.35
  },
  {
-  "say": "Hana snap-turns back left",
+  "say": "Hana snap-turns right",
   "seconds": 0.25,
   "right": [
-   -0.9,
+   0.9,
    0.0
   ]
  },
  {
   "say": "Hana releases the stick",
-  "seconds": 0.75
+  "seconds": 0.35
  },
  {
-  "say": "Hana aims a teleport ahead",
+  "say": "Hana snap-turns right",
+  "seconds": 0.25,
+  "right": [
+   0.9,
+   0.0
+  ]
+ },
+ {
+  "say": "Hana releases the stick",
+  "seconds": 0.35
+ },
+ {
+  "say": "Hana snap-turns right",
+  "seconds": 0.25,
+  "right": [
+   0.9,
+   0.0
+  ]
+ },
+ {
+  "say": "Hana releases the stick",
+  "seconds": 0.35
+ },
+ {
+  "say": "Hana snap-turns right",
+  "seconds": 0.25,
+  "right": [
+   0.9,
+   0.0
+  ]
+ },
+ {
+  "say": "Hana releases the stick",
+  "seconds": 0.35
+ },
+ {
+  "say": "Hana snap-turns right, facing the stairs",
+  "seconds": 0.25,
+  "right": [
+   0.9,
+   0.0
+  ]
+ },
+ {
+  "say": "Hana releases the stick",
+  "seconds": 0.5
+ },
+ {
+  "say": "Hana climbs the forecourt stairs",
+  "seconds": 1.8,
+  "left": [
+   0.0,
+   0.9
+  ]
+ },
+ {
+  "say": "Hana stands on the forecourt",
+  "seconds": 1.0
+ },
+ {
+  "say": "Hana aims a teleport into the station",
   "seconds": 1.0,
   "right": [
    0.0,
@@ -54,18 +147,6 @@
  {
   "say": "Hana releases to teleport",
   "seconds": 1.0
- },
- {
-  "say": "Hana walks up to the forecourt stairs",
-  "seconds": 4.0,
-  "left": [
-   0.0,
-   0.9
-  ]
- },
- {
-  "say": "Hana stands on the forecourt",
-  "seconds": 1.5
  },
  {
   "say": "Hana holds Y for the radial",
