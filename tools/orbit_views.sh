@@ -25,6 +25,9 @@ done
 GODOT="${GODOT:-godot}"
 TO="$(command -v timeout || command -v gtimeout)"
 SHA="$(command -v sha256sum || echo 'shasum -a 256')"
+# A macOS window that is covered or asleep stops drawing, which the tool reports as blank views.
+AWAKE=()
+[ "$(uname)" = Darwin ] && AWAKE=(caffeinate -dimsu)
 ORACLE=oracle-4112f57-h8-warp
 ORACLE_URL=https://github.com/V-Sekai-fire/entities-sakuragaoka-station/releases/download/$ORACLE
 COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
@@ -55,7 +58,7 @@ for feature in walking persona world-grab; do
 	while compgen -G "$OUT/${DAY}_meshing-pen_joy-${feature}_$(printf %04d $n).*" >/dev/null; do n=$((n + 1)); done
 	stem="${DAY}_meshing-pen_joy-${feature}_$(printf %04d $n)"
 	log="$OUT/.$stem.log"
-	"$TO" 1000 "$GODOT" --path "$ROOT" --xr-mode off --fixed-fps 60 --resolution 640x360 --script res://tools/orbit_views.sgd -- \
+	${AWAKE[@]+"${AWAKE[@]}"} "$TO" 1000 "$GODOT" --path "$ROOT" --xr-mode off --fixed-fps 60 --always-on-top --resolution 640x360 --script res://tools/orbit_views.sgd -- \
 		--feature=$feature --out="$OUT/$stem.png" --oracle="$OUT/.oracle/$ORACLE-view" \
 		--tag="$TAG" --commit="$COMMIT" ${CONTROL[@]+"${CONTROL[@]}"} >"$log" 2>&1
 	grep '^joy:' "$log"
