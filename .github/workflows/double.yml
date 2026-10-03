@@ -15,6 +15,11 @@ jobs:
   gate:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [replay, statue, locomotion, player]
+    name: gate (${{ matrix.group }})
     steps:
       - uses: actions/checkout@v4
       - name: The pinned engine and the vendored addon, checked
@@ -34,15 +39,17 @@ jobs:
         run: |
           "$GODOT" --headless --version | tee version.txt
           grep -q '\.double\.' version.txt
-      - name: Load probe (curvenet.elf + usd.elf)
+      - name: Load probe (curvenet.elf + usd.elf), which also imports the project for every group
         run: GODOT="$GODOT" bash tools/test.sh
       - name: Saved-stroke replay gate (skirt.usda)
+        if: matrix.group == 'replay'
         run: |
           timeout 300 "$GODOT" --headless --path . --xr-mode off --script tools/gate_replay.gd -- \
             --strokes=tools/strokes/skirt.usda --out=replay.txt --wallclock=240
           echo "--- replay.txt ---"; cat replay.txt
           grep -q "RESULT: PASS" replay.txt
       - name: The replay gate's control (drop_seam must FAIL at MESH)
+        if: matrix.group == 'replay'
         run: |
           if timeout 300 "$GODOT" --headless --path . --xr-mode off --script tools/gate_replay.gd -- \
             --strokes=tools/strokes/skirt.usda --control=drop_seam --out=drop.txt --wallclock=240; then
@@ -51,10 +58,12 @@ jobs:
           echo "--- drop.txt ---"; cat drop.txt
           grep -q "RESULT: FAIL (FAILED(MESH:" drop.txt
       - name: Statue gate (Maro's stand-in beside the monument, drawn on with the pen, wears the garment)
+        if: matrix.group == 'statue'
         run: |
           timeout 300 "$GODOT" --headless --xr-mode off --path . --script tools/gate_statue.gd | tee statue.txt
           grep -q "^RESULT: PASS" statue.txt
       - name: The statue gate's controls (each must FAIL)
+        if: matrix.group == 'statue'
         run: |
           for pair in "on_monument:clears the station" "canvas_frame:strokes on the statue"; do
             c=${pair%%:*}; want=${pair#*:}
@@ -66,10 +75,12 @@ jobs:
             grep "^FAIL" "statue-$c.txt"
           done
       - name: World grab gate (two grips carry and scale the station)
+        if: matrix.group == 'player'
         run: |
           timeout 300 "$GODOT" --headless --fixed-fps 60 --path . --script tools/gate_world_grab.gd | tee grab.txt
           grep -q "RESULT: PASS" grab.txt
       - name: The world grab gate's control (cold debounce must FAIL)
+        if: matrix.group == 'player'
         run: |
           if timeout 300 "$GODOT" --headless --fixed-fps 60 --path . --script tools/gate_world_grab.gd -- \
             --control=cold_debounce > grab-cold.txt 2>&1; then
@@ -78,10 +89,12 @@ jobs:
           cat grab-cold.txt
           grep -q "first two-hand grab, 0.0000 m" grab-cold.txt
       - name: Locomotion gate (walk, stairs, ledge, handrail, snap turn, teleport, repeat in the MuJoCo guest)
+        if: matrix.group == 'locomotion'
         run: |
           timeout 900 "$GODOT" --headless --xr-mode off --path . --script tools/gate_locomotion.gd | tee loco.txt
           grep -q "RESULT: PASS" loco.txt
       - name: The locomotion gate's controls (each must FAIL)
+        if: matrix.group == 'locomotion'
         run: |
           for pair in "step_high:wall stops" "no_resolve:wall stops" "solid_land:teleport refused" \
               "no_floor:handrail top refused" "ulp:repeats bit for bit"; do
@@ -95,10 +108,12 @@ jobs:
             grep "^FAIL" "loco-$c.txt"
           done
       - name: Player probe (xr_main's station player walks, snap-turns once per cooldown, teleports, radial)
+        if: matrix.group == 'player'
         run: |
           timeout 900 "$GODOT" --headless --xr-mode off --path . -s tools/probe_player.gd | tee probe.txt
           grep -q "^RESULT: PASS" probe.txt
       - name: The player probe's control (no snap-turn cooldown must FAIL)
+        if: matrix.group == 'player'
         run: |
           if timeout 900 "$GODOT" --headless --xr-mode off --path . -s tools/probe_player.gd -- \
             --control=no_cooldown > probe-cold.txt 2>&1; then
@@ -107,9 +122,11 @@ jobs:
           cat probe-cold.txt
           grep -q "^RESULT: FAIL (snap cooldown)" probe-cold.txt
       - name: The persona stairs judge and its controls (a skipped tread, a dip, no climb, a rising fall)
+        if: matrix.group == 'player'
         run: |
           timeout 300 "$GODOT" --headless --xr-mode off --path . -s tools/persona_capture.gd -- --self-test | tee stairs.txt
           grep -q "^RESULT: PASS" stairs.txt
           test "$(grep -c '^PASS control:' stairs.txt)" = 4
       - name: The persona walk driver's packet layout and beat file
+        if: matrix.group == 'player'
         run: python3 tools/walk_oxrsys.py --self-test
