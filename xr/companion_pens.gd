@@ -18,6 +18,9 @@ var _loading := false
 
 func _ready() -> void:
 	print("[dress-on] companion pens: _ready")
+	if not ProjectSettings.get_setting("xr/companion_pens/enabled", false):
+		print("[dress-on] companion pens: off (xr/companion_pens/enabled)")
+		return
 	_origin = get_node_or_null("../XROrigin3D")
 	if _origin == null:
 		return
