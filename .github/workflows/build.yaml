@@ -129,29 +129,3 @@ jobs:
               "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.create_release.outputs.id }}/assets?name=${file}" \
               -T "${file}"; \
           done
-
-  itch-upload:
-    runs-on: ubuntu-latest
-    needs: [build]
-
-    # Publish only on v-sekai-game tag update
-    if: needs.build.outputs.ITCH_IO_PUBLISH == 'true' && needs.build.outputs.TAG_PUSH == 'true'
-    steps:
-      - name: Fetch docker itch action
-        id: fetch-itch-action
-        run: |
-          git clone --branch feat/rx https://github.com/V-Sekai-fire/v-sekai-game.git
-
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ${{ github.workspace }}/v-sekai-release
-          name: v-sekai-release
-
-      - name: Docker Itch.io Publish
-        uses: ./v-sekai-game/docker/itch-io
-        with:
-          api_key: ${{ secrets.ITCH_IO_API_KEY }}
-          filepath: v-sekai-release
-          itchio_project: projectname
-          release_version: ${{ needs.build.outputs.GIT_TAG }}
