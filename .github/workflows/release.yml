@@ -37,9 +37,9 @@ jobs:
           done
           chmod +x godot.macos.*
       - name: The game per platform
-        run: GODOT="$RUNNER_TEMP/engine/godot.macos.editor.double.arm64" TEMPLATES="$RUNNER_TEMP/engine" elixir tools/export_dev3.exs
+        run: GODOT="$RUNNER_TEMP/engine/godot.macos.editor.double.arm64" TEMPLATES="$RUNNER_TEMP/engine" elixir tools/export_dev3.exs --rendering-driver=opengl3
       - name: The exported app loads its guests, and its control fails
-        run: elixir tools/smoke_export.exs build/export/meshing-pen.app
+        run: elixir tools/smoke_export.exs build/export/meshing-pen.app --rendering-driver=opengl3
       - uses: actions/upload-artifact@v4
         with:
           name: game

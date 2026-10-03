@@ -1,12 +1,14 @@
 # The game per platform: meshing-pen.dmg (macOS arm64) and meshing-pen-windows.zip (the .exe with its pack, and the addon .dll).
-#   GODOT=<double editor> TEMPLATES=<dir holding ENGINE_TAG's templates> elixir tools/export_dev3.exs
+#   GODOT=<double editor> TEMPLATES=<dir holding ENGINE_TAG's templates> elixir tools/export_dev3.exs [--rendering-driver=opengl3]
 defmodule ExportDev3 do
   @root Path.expand("..", __DIR__)
   @mac_bin "godot.macos.template_release.double.arm64"
   @win_bin "godot.windows.template_release.double.x86_64.llvm.exe"
   @outputs ~w(meshing-pen.app/Contents/MacOS/meshing-pen meshing-pen.dmg meshing-pen-windows.zip)
 
-  def main do
+  def main(argv) do
+    driver = for "--rendering-driver=" <> d <- argv, do: ["--rendering-driver", d]
+    Process.put(:driver, List.flatten(driver))
     godot = env!("GODOT")
     templates = env!("TEMPLATES")
     File.cd!(@root)
@@ -42,7 +44,7 @@ defmodule ExportDev3 do
   end
 
   defp godot!(godot, args) do
-    {_, status} = System.cmd(godot, ["--path", "." | args], into: IO.stream(), stderr_to_stdout: true)
+    {_, status} = System.cmd(godot, ["--path", "." | Process.get(:driver, [])] ++ args, into: IO.stream(), stderr_to_stdout: true)
     if status != 0, do: fail("godot #{Enum.join(args, " ")} exited #{status}")
   end
 
@@ -54,4 +56,4 @@ defmodule ExportDev3 do
   end
 end
 
-ExportDev3.main()
+ExportDev3.main(System.argv())

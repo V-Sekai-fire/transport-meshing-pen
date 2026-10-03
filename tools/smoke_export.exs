@@ -1,11 +1,12 @@
 # Launches the exported macOS app until it quits and checks that its guests loaded from the embedded pack.
 # The control runs a copy with the pack removed, which must FAIL. Each run is cut off after @limit_s.
-#   elixir tools/smoke_export.exs build/export/meshing-pen.app
+#   elixir tools/smoke_export.exs build/export/meshing-pen.app [--rendering-driver=opengl3]
 defmodule SmokeExport do
   @guests ~w(dress_on curvenet usd mujoco)
   @limit_s 60
 
-  def main([app]) do
+  def main([app | opts]) do
+    Process.put(:driver, List.flatten(for "--rendering-driver=" <> d <- opts, do: ["--rendering-driver", d]))
     case missing(run(app)) do
       [] -> IO.puts("PASS smoke: #{Enum.join(@guests, " ")} loaded")
       gone -> fail("smoke: #{Enum.join(gone, " ")} not loaded")
@@ -28,7 +29,7 @@ defmodule SmokeExport do
 
   defp run(app) do
     exe = Path.join(app, "Contents/MacOS/meshing-pen")
-    port = Port.open({:spawn_executable, exe}, [:binary, :exit_status, :stderr_to_stdout, args: ["--xr-mode", "off", "--quit"]])
+    port = Port.open({:spawn_executable, exe}, [:binary, :exit_status, :stderr_to_stdout, args: Process.get(:driver, []) ++ ["--xr-mode", "off", "--quit"]])
     {:os_pid, pid} = Port.info(port, :os_pid)
     collect(port, pid, "", System.monotonic_time(:millisecond) + @limit_s * 1000)
   end
