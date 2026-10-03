@@ -39,8 +39,7 @@ jobs:
         run: |
           "$GODOT" --headless --version | tee version.txt
           grep -q '\.double\.' version.txt
-      - name: Load probe (curvenet.elf + usd.elf)
-        if: matrix.group == 'replay'
+      - name: Load probe (curvenet.elf + usd.elf), which also imports the project for every group
         run: GODOT="$GODOT" bash tools/test.sh
       - name: Saved-stroke replay gate (skirt.usda)
         if: matrix.group == 'replay'
