@@ -1,35 +1,35 @@
-# Launches the exported macOS app until it quits and checks that its guests loaded from the embedded pack.
-# The control runs a copy with the pack removed, which must FAIL. Each run is cut off after @limit_s.
-#   elixir tools/smoke_export.exs build/export/meshing-pen.app [--rendering-driver=opengl3]
+# Launches the exported Windows game until it quits and checks that its guests loaded from the embedded pack.
+# The control runs the bare template, which carries no pack, beside the same .dll and must FAIL. Runs on the Windows desk.
+#   elixir tools/smoke_export.exs build/export/meshing-pen-windows.exe <godot.windows.template_release.double.x86_64.llvm.exe>
 defmodule SmokeExport do
   @guests ~w(dress_on curvenet usd mujoco)
-  @limit_s 60
+  @dll "libgodot_riscv.windows.template_release.double.x86_64.dll"
+  @limit_s 120
 
-  def main([app | opts]) do
-    Process.put(:driver, List.flatten(for "--rendering-driver=" <> d <- opts, do: ["--rendering-driver", d]))
-    case missing(run(app)) do
+  def main([exe, template]) do
+    case missing(run(exe)) do
       [] -> IO.puts("PASS smoke: #{Enum.join(@guests, " ")} loaded")
       gone -> fail("smoke: #{Enum.join(gone, " ")} not loaded")
     end
 
-    bare = Path.join(System.tmp_dir!(), "smoke-#{System.unique_integer([:positive])}/meshing-pen.app")
-    File.mkdir_p!(Path.dirname(bare))
-    File.cp_r!(app, bare)
-    Enum.each(Path.wildcard(Path.join(bare, "Contents/Resources/*.pck")), &File.rm!/1)
+    dir = Path.join(System.tmp_dir!(), "smoke-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    bare = Path.join(dir, "meshing-pen-windows.exe")
+    File.cp!(template, bare)
+    File.cp!(Path.join(Path.dirname(exe), @dll), Path.join(dir, @dll))
 
     case missing(run(bare)) do
-      [] -> fail("control: the app with no pack still reported its guests")
-      _ -> IO.puts("PASS control: the app with no pack loads no guest")
+      [] -> fail("control: the template with no pack still reported its guests")
+      _ -> IO.puts("PASS control: the template with no pack loads no guest")
     end
 
-    File.rm_rf!(Path.dirname(bare))
+    File.rm_rf!(dir)
   end
 
-  def main(_), do: fail("usage: elixir tools/smoke_export.exs <exported .app>")
+  def main(_), do: fail("usage: elixir tools/smoke_export.exs <exported .exe> <bare template .exe>")
 
-  defp run(app) do
-    exe = Path.join(app, "Contents/MacOS/meshing-pen")
-    port = Port.open({:spawn_executable, exe}, [:binary, :exit_status, :stderr_to_stdout, args: Process.get(:driver, []) ++ ["--xr-mode", "off", "--quit"]])
+  defp run(exe) do
+    port = Port.open({:spawn_executable, Path.expand(exe)}, [:binary, :exit_status, :stderr_to_stdout, args: ["--xr-mode", "off", "--quit"]])
     {:os_pid, pid} = Port.info(port, :os_pid)
     collect(port, pid, "", System.monotonic_time(:millisecond) + @limit_s * 1000)
   end
@@ -42,7 +42,8 @@ defmodule SmokeExport do
       {^port, {:exit_status, _}} -> acc
     after
       wait ->
-        System.cmd("kill", ["-9", to_string(pid)])
+        System.cmd("taskkill", ["/F", "/T", "/PID", to_string(pid)])
+        receive do: ({^port, {:exit_status, _}} -> :ok), after: (5000 -> :ok)
         acc <> "\n(cut off after #{@limit_s} s)\n"
     end
   end
