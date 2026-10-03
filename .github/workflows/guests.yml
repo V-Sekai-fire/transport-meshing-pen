@@ -20,7 +20,16 @@ env:
 
 jobs:
   build:
+    name: build (${{ matrix.part }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { part: curvenet, args: "--no-host --targets=curvenet" }
+          - { part: dress-on-lasso, args: "--no-host --targets=dress_on,lasso" }
+          - { part: probes-ggml, args: "--no-host --targets=probes,ggml_test" }
+          - { part: host, args: "--no-elfs" }
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -54,10 +63,10 @@ jobs:
             interactor-curvenet interactor-lasso interactor-usd-guest ggml
       - name: Build, harnesses and the load gate
         working-directory: weft/1-transport/meshing-pen
-        run: elixir tools/build.exs --gates=load
+        run: elixir tools/build.exs --gates=load ${{ matrix.args }}
       - name: Keep the ELFs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: guests-${{ github.sha }}
+          name: guests-${{ github.sha }}-${{ matrix.part }}
           path: weft/1-transport/meshing-pen/*.elf
