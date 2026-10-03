@@ -6,6 +6,9 @@ name: release
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths: ["export_presets.cfg", "tools/export_dev3.exs", "tools/smoke_export.exs", ".github/workflows/release.yml"]
+  workflow_dispatch:
 permissions:
   contents: write
 
@@ -14,7 +17,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  export:
+    runs-on: macos-14
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Elixir
+        run: brew install --quiet elixir
+      - name: The pinned editor and templates, checked against their release
+        run: |
+          . tools/frame/releases.env
+          base=https://github.com/V-Sekai-fire/service-godot-build/releases/download/$ENGINE_TAG
+          mkdir -p "$RUNNER_TEMP/engine" && cd "$RUNNER_TEMP/engine"
+          curl -fsSL -o SHA256SUMS "$base/SHA256SUMS"
+          for f in godot.macos.editor.double.arm64 godot.macos.template_release.double.arm64 \
+              godot.windows.template_release.double.x86_64.llvm.exe; do
+            curl -fsSL -o "$f" "$base/$f"
+            grep " $f\$" SHA256SUMS | shasum -a 256 -c -
+          done
+          chmod +x godot.macos.*
+      - name: The game per platform
+        run: GODOT="$RUNNER_TEMP/engine/godot.macos.editor.double.arm64" TEMPLATES="$RUNNER_TEMP/engine" elixir tools/export_dev3.exs
+      - name: The exported app loads its guests, and its control fails
+        run: elixir tools/smoke_export.exs build/export/meshing-pen.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game
+          path: |
+            build/export/meshing-pen.dmg
+            build/export/meshing-pen-windows.zip
+
   release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: export
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -41,6 +76,10 @@ jobs:
             grep -q " $lib\$" addon.sums
             (cd release && grep " $lib\$" ../addon.sums | sha256sum -c --quiet -)
           done
+      - uses: actions/download-artifact@v4
+        with:
+          name: game
+          path: release
       - name: The ELFs and one SHA256SUMS
         run: |
           cp ./*.elf release/
