@@ -1,11 +1,13 @@
-# A pen release on RFD 2293's ladder: on a tag, the macOS arm64 and Windows x86_64 double
-# engines from the service-godot-build release tools/frame/releases.env pins, the vendored
-# addon's macOS and Windows binaries, and the guest ELFs, each engine and addon file checked
-# against its release's SHA256SUMS. The rung plays through the oxrsys runtime and simulator at OXRSYS_COMMIT.
+# A pen release on RFD 2297's dev.3: on a tag, the Windows x86_64 game exported headless from the
+# double engine tools/frame/releases.env pins, its addon .dll checked against its release, and the
+# guest ELFs, under one SHA256SUMS with no archive among them.
 name: release
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths: ["export_presets.cfg", "tools/export_dev3.exs", "tools/smoke_export.exs", ".github/workflows/release.yml"]
+  workflow_dispatch:
 permissions:
   contents: write
 
@@ -14,37 +16,66 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  export:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: The pinned engine, and the addon checked against its release
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          elixir-version: "1.20.4"
+      - name: The pinned editor and template, checked against their release
+        run: |
+          . tools/frame/releases.env
+          base=https://github.com/V-Sekai-fire/service-godot-build/releases/download/$ENGINE_TAG
+          mkdir -p "$RUNNER_TEMP/engine" && cd "$RUNNER_TEMP/engine"
+          curl -fsSL -o SHA256SUMS "$base/SHA256SUMS"
+          for f in godot.linuxbsd.editor.double.x86_64 godot.windows.template_release.double.x86_64.llvm.exe; do
+            curl -fsSL -o "$f" "$base/$f"
+            grep " $f\$" SHA256SUMS | sha256sum -c -
+          done
+          chmod +x godot.linuxbsd.editor.double.x86_64
+      - name: The Windows game, headless
+        run: GODOT="$RUNNER_TEMP/engine/godot.linuxbsd.editor.double.x86_64" TEMPLATES="$RUNNER_TEMP/engine" elixir tools/export_dev3.exs
+      - name: Unchecked here, run on the Windows desk (a software rasterizer is all a runner has)
+        run: echo "UNCHECKED 1 - tools/smoke_export.exs and its bare-template control"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game
+          path: |
+            build/export/meshing-pen-windows.exe
+            build/export/libgodot_riscv.windows.template_release.double.x86_64.dll
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: export
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: game
+          path: release
+      - name: The game's addon checked against its release, the ELFs and one SHA256SUMS
         run: |
           . tools/frame/releases.env
           echo "ENGINE_TAG=$ENGINE_TAG" >> "$GITHUB_ENV"
           echo "ADDON_TAG=$ADDON_TAG" >> "$GITHUB_ENV"
           echo "OXRSYS_COMMIT=$OXRSYS_COMMIT" >> "$GITHUB_ENV"
-          base=https://github.com/V-Sekai-fire/service-godot-build/releases/download
-          mac=libgodot_riscv.macos.template_release.double.universal
-          mkdir -p release
-          curl -fsSL -o engine.sums "$base/$ENGINE_TAG/SHA256SUMS"
-          curl -fsSL -o addon.sums "$base/$ADDON_TAG/SHA256SUMS"
-          for exe in godot.macos.editor.double.arm64 godot.windows.editor.double.x86_64.llvm.exe \
-              godot.windows.editor.double.x86_64.llvm.console.exe; do
-            curl -fsSL -o "release/$exe" "$base/$ENGINE_TAG/$exe"
-            grep -q " $exe\$" engine.sums
-            (cd release && grep " $exe\$" ../engine.sums | sha256sum -c --quiet -)
-          done
-          cp "addons/godot_sandbox/bin/$mac.framework/$mac" addons/godot_sandbox/bin/libgodot_riscv.windows.template_release.double.x86_64.dll release/
-          for lib in "$mac" libgodot_riscv.windows.template_release.double.x86_64.dll; do
-            grep -q " $lib\$" addon.sums
-            (cd release && grep " $lib\$" ../addon.sums | sha256sum -c --quiet -)
-          done
-      - name: The ELFs and one SHA256SUMS
-        run: |
+          dll=libgodot_riscv.windows.template_release.double.x86_64.dll
+          curl -fsSL -o addon.sums "https://github.com/V-Sekai-fire/service-godot-build/releases/download/$ADDON_TAG/SHA256SUMS"
+          grep -q " $dll\$" addon.sums
+          (cd release && grep " $dll\$" ../addon.sums | sha256sum -c --quiet -)
           cp ./*.elf release/
           cd release && sha256sum * | tee SHA256SUMS
+      - name: No archive among the assets, and its control (a planted x.zip must FAIL)
+        run: |
+          archives() { ! ls "$1" | grep -E '\.(zip|dmg|gz|tgz)$'; }
+          mkdir -p "$RUNNER_TEMP/control" && cp release/SHA256SUMS "$RUNNER_TEMP/control/" && touch "$RUNNER_TEMP/control/x.zip"
+          if archives "$RUNNER_TEMP/control"; then echo "FAIL control: x.zip passed the archive check"; exit 1; fi
+          archives release || { echo "FAIL an archive among the release assets"; exit 1; }
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,5 +83,5 @@ jobs:
           pre=
           case "$GITHUB_REF_NAME" in *-dev.*|*-beta.*|*-rc.*) pre=--prerelease ;; esac
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" $pre \
-            --notes "Pen ${GITHUB_SHA}. macOS arm64 and Windows x86_64 engines ${ENGINE_TAG} and addon ${ADDON_TAG} from V-Sekai-fire/service-godot-build, each checked against its release's SHA256SUMS. Play it through the oxrsys runtime and simulator at V-Sekai-fire/oxrsys ${OXRSYS_COMMIT}." \
+            --notes "Pen ${GITHUB_SHA}. meshing-pen-windows.exe with its pack embedded, exported from engine ${ENGINE_TAG}; keep the addon ${ADDON_TAG} .dll beside it. Windows x86_64, played on the Frame through its compatibility layer or on a desk through oxrsys at V-Sekai-fire/oxrsys ${OXRSYS_COMMIT}." \
             release/*
