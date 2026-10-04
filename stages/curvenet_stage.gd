@@ -52,6 +52,10 @@ func pen_end_raw(id: int) -> String:
 func pen_end_with_crossings(id: int, crossings: PackedFloat32Array) -> String:
 	return str(call_now("pen_end_with_crossings", [id, crossings]))
 
+# Finalize a recorded stroke, joined only at its recorded junctions (flat xyz).
+func pen_end_recorded(id: int, junctions: PackedFloat32Array) -> String:
+	return str(call_now("pen_end_recorded", [id, junctions]))
+
 func patches() -> int:
 	var r = call_now("patch_count")
 	return int(r) if typeof(r) == TYPE_INT or typeof(r) == TYPE_FLOAT else -1

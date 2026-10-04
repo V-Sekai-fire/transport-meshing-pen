@@ -34,6 +34,8 @@ const PEN_EVENTS_PER_FRAME := 64
 var infer = null
 var curvenet = null
 var mujoco = null
+const SOLVE_TIMEOUT_MS := 60000 # one stroke's commit; past this the run fails
+var _end_pending := -1
 var usd = null # stages/usd_stage.gd: strokes_from and saving strokes
 
 var opts := {}
@@ -60,7 +62,7 @@ const DEFAULTS := {
 	"pen": "scripted",        # scripted | xr
 	"avatar": "foxgirl",      # the infer/rig fixture body under fixtures/: foxgirl | maro
 	"pen_instant": false,     # feed every pen event in order in one frame, not paced per frame
-	"crossings": "mujoco",    # "curvenet": skip the MuJoCo guest and let curvenet find each stroke's crossings
+	"crossings": "mujoco",    # "curvenet": curvenet finds each stroke's crossings; "recorded": the layer's junctions
 	"body_snap": true,        # false: curvenet's snap_radius 0, for a sketch not authored on this body
 	"drop_seam": false,       # control: the back seam is not drawn, or seam_back is dropped from strokes_from
 	                          # -> FAILED(MESH)
@@ -102,6 +104,7 @@ func start(o: Dictionary = {}) -> String:
 	pen_finished = false
 	reason = ""
 	_stroke_ids = {}
+	_end_pending = -1
 	_run_t0 = Time.get_ticks_msec()
 	if infer != null:
 		infer.avatar = str(opts.avatar)
@@ -273,6 +276,17 @@ func _rig() -> void:
 
 # --- AUTHOR / MESH -------------------------------------------------------------------------
 
+# The junctions the strokes layer recorded for stroke k, flat xyz in the Body frame.
+func _recorded_junctions(k: int) -> PackedFloat32Array:
+	var flat := PackedFloat32Array()
+	var all = JSON.parse_string(str(data.get("strokes_from", {}).get("meta", {}).get("junctions", "[]")))
+	if typeof(all) != TYPE_ARRAY or k >= all.size():
+		return flat
+	for p in all[k]:
+		flat.append_array([float(p[0]), float(p[1]), float(p[2])])
+	return flat
+
+
 # The proximity for MuJoCo crossings (capsule radius is half of it), matching
 # the curvenet graph's snap/merge scale.
 func _crossing_proximity() -> float:
@@ -328,6 +342,8 @@ func _author(first: bool) -> void:
 			return
 		if not bool(opts.body_snap):
 			curvenet.set_param("snap_radius", 0.0)
+		if str(opts.crossings) == "recorded":
+			curvenet.set_param("defer_meshing", 1.0)
 		data.pen_ends = []
 		data.authored = []
 		_authored_of = {}
@@ -337,6 +353,18 @@ func _author(first: bool) -> void:
 		elif opts.pen == "scripted":
 			pass # the bridge replays the same source, with its visuals
 		return
+	if _end_pending >= 0:
+		var pr: Dictionary = curvenet.poll()
+		if not pr.done:
+			if int(pr.host_ms) > SOLVE_TIMEOUT_MS:
+				_fail("pen_end stroke %d: still solving after %d s" % [_end_pending, SOLVE_TIMEOUT_MS / 1000])
+			return
+		var done_r := str(pr.result)
+		data.pen_ends.append(done_r)
+		if done_r.begins_with("FAIL"):
+			_fail("pen_end stroke %d: %s" % [_end_pending, done_r])
+			return
+		_end_pending = -1
 	var n := 0
 	while not pen_queue.is_empty() and (opts.pen_instant or n < PEN_EVENTS_PER_FRAME):
 		var e: Dictionary = pen_queue.pop_front()
@@ -373,7 +401,13 @@ func _author(first: bool) -> void:
 						polys.append(a.points)
 					cx = mujoco.crossings(polys, _crossing_proximity())
 				var r: String
-				if cx.is_empty():
+				if str(opts.crossings) == "recorded":
+					# On the stage's worker thread: the frame goes on, and the queue waits
+					# for this stroke before the next one, so topology stays in order.
+					curvenet.start("pen_end_recorded", [sid, _recorded_junctions(e.stroke), e.stroke])
+					_end_pending = e.stroke
+					return
+				elif cx.is_empty():
 					r = curvenet.pen_end_raw(sid)
 				else:
 					var flat := PackedFloat32Array()
