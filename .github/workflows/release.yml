@@ -83,5 +83,5 @@ jobs:
           pre=
           case "$GITHUB_REF_NAME" in *-dev.*|*-beta.*|*-rc.*) pre=--prerelease ;; esac
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" $pre \
-            --notes "Pen ${GITHUB_SHA}. meshing-pen-windows.exe with its pack embedded, exported from engine ${ENGINE_TAG}; keep the addon ${ADDON_TAG} .dll beside it. Windows x86_64, played on the Frame through its compatibility layer or on a desk through oxrsys at V-Sekai-fire/oxrsys ${OXRSYS_COMMIT}." \
+            --notes "Pen ${GITHUB_SHA}. meshing-pen-windows.exe with its pack embedded, exported from engine ${ENGINE_TAG}; keep the addon ${ADDON_TAG} .dll beside it. Windows x86_64, played on the Frame through its compatibility layer or on a desk through oxrsys at V-Sekai-fire/interactor-oxrsys ${OXRSYS_COMMIT}." \
             release/*
