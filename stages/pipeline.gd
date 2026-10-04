@@ -60,6 +60,8 @@ const DEFAULTS := {
 	"pen": "scripted",        # scripted | xr
 	"avatar": "foxgirl",      # the infer/rig fixture body under fixtures/: foxgirl | maro
 	"pen_instant": false,     # feed every pen event in order in one frame, not paced per frame
+	"crossings": "mujoco",    # "curvenet": curvenet finds them; "cassie": the beautifier's intersections are the junctions
+	"body_snap": true,        # false: curvenet's snap_radius 0, for a sketch not authored on this body
 	"drop_seam": false,       # control: the back seam is not drawn, or seam_back is dropped from strokes_from
 	                          # -> FAILED(MESH)
 	"closed_rings": false,
@@ -324,6 +326,10 @@ func _author(first: bool) -> void:
 		if r0.begins_with("FAIL") or r1.begins_with("FAIL"):
 			_fail("curvenet setup: %s | %s" % [r0, r1])
 			return
+		if not bool(opts.body_snap):
+			curvenet.set_param("snap_radius", 0.0)
+		if str(opts.crossings) == "cassie":
+			curvenet.set_param("intervals", 1.0)
 		data.pen_ends = []
 		data.authored = []
 		_authored_of = {}
@@ -363,7 +369,7 @@ func _author(first: bool) -> void:
 				# stroke, so passing the whole set is safe. No guest, or none found,
 				# falls back to curvenet's own solve (the parallel-commit rollback).
 				var cx := PackedVector3Array()
-				if mujoco != null and mujoco.available():
+				if str(opts.crossings) == "mujoco" and mujoco != null and mujoco.available():
 					var polys := []
 					for a in data.authored:
 						polys.append(a.points)

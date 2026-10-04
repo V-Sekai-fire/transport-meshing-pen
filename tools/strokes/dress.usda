@@ -1,7 +1,9 @@
 #usda 1.0
 (
     customLayerData = {
+        bool body_snap = 0
         string converter = "transport-meshing-pen tools/cassie_raw_usd.py"
+        string crossings = "curvenet"
         string expected = '{"strokes": 153, "cycles": 190, "openings": 0}'
         string expected_source = "the session's patches alive at the end found by CASSIE's own cycle detection (foundByAlgo)"
         string flip = "z"

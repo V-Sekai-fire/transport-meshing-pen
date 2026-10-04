@@ -97,6 +97,14 @@ func _process(_dt: float) -> bool:
 			_main.pipeline.state_changed.connect(func(st: String, _rec: Dictionary): _say("STATE " + st))
 			# Every stroke in its saved order, all in one frame: sequenced, not paced.
 			var o := {"strokes_from": _strokes_file, "allow_fixture": "infer,rig", "stop_after": _stop_after(), "pen_instant": true}
+			# The layer's own replay settings, then any given on the command line.
+			var meta: Dictionary = StrokesUsd.from_file(_main.usd, _strokes_file).get("meta", {})
+			for k in ["crossings", "body_snap"]:
+				if meta.has(k):
+					o[k] = str(meta[k]) if k == "crossings" else str(meta[k]).to_lower() not in ["0", "false"]
+				if _arg(k) != "":
+					o[k] = _arg(k) if k == "crossings" else _arg(k) == "true"
+			_say("replay settings: crossings %s body_snap %s" % [o.get("crossings", "mujoco"), o.get("body_snap", true)])
 			match _arg("control"):
 				"":
 					pass
@@ -192,6 +200,17 @@ func _evaluate_file() -> void:
 	var exp := _expected(sf.get("meta", {}))
 	_say("replay: strokes %d (planned %d) cycles %d openings %d, expected %s, state %s; %s" % [strokes, planned, cycles,
 			openings, JSON.stringify(exp) if not exp.is_empty() else "none", p.status(), _mesh_line(p)])
+	var ends: Array = p.data.get("pen_ends", [])
+	var first_bad := -1
+	var best := ""
+	for i in ends.size():
+		if not str(ends[i]).begins_with("ok="):
+			if first_bad < 0:
+				first_bad = i
+		else:
+			best = str(ends[i])
+	_say("pen_ends: %d, first not ok at %d (%s); last ok: %s" % [ends.size(), first_bad,
+			str(ends[first_bad]).left(160) if first_bad >= 0 else "-", best.left(200)])
 	if p.state != "DONE":
 		_finish("FAIL (%s)" % p.status())
 		return

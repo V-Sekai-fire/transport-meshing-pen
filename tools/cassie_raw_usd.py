@@ -83,6 +83,8 @@ def main(argv):
         "expected": json.dumps({"strokes": len(strokes), "cycles": found, "openings": 0}),
         "expected_source": "the session's patches alive at the end found by CASSIE's own cycle detection (foundByAlgo)",
         "stop_after": "AUTHOR",
+        "crossings": "curvenet",
+        "body_snap": False,
     }
     text = cu.write_usda(cu.to_body([s.astype(np.float32) for s in strokes]), names, (), meta)
     open(a.out, "w", encoding="utf-8").write(text)
