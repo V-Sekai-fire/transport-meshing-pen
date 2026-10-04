@@ -14,8 +14,9 @@ curves_usd does (Z negated).
 
 The expectation is the number of cycles the app's algorithm had at the end. The export logs every
 patch it ever created and not the ones it dropped, so a found patch counts unless it was deleted,
-lost a stroke to deletion, or was split: a later stroke has two patches in its batch that contain
-it and together hold all of the earlier patch's strokes. A mirror stroke's id is its original's
+lost a stroke to deletion, or was split: a later stroke has two patches in its batch (the patches
+logged while it was committed, just before its ADD_STROKE) that contain it and together hold all
+of the earlier patch's strokes. A mirror stroke's id is its original's
 plus one, so deleting a stroke deletes its mirror, and a stroke splits with its mirror too.
 """
 import argparse
@@ -94,14 +95,18 @@ def alive_patches(session):
     seq = [(s["interactionType"], s["elementID"]) for s in session["systemStates"]
            if s["interactionType"] in (ADD_STROKE, DELETE_STROKE, ADD_PATCH, DELETE_PATCH)]
     patches = {p["id"]: p for p in session["allCreatedPatches"]}
-    batch, created, stroke_at, cur = {}, {}, {}, None
+    # The app logs a stroke's patches while committing it, just before its ADD_STROKE.
+    batch, owner, stroke_at, pending = {}, {}, {}, []
     for i, (kind, e) in enumerate(seq):
-        if kind == ADD_STROKE:
-            cur = e
+        if kind == ADD_PATCH:
+            pending.append(e)
+        elif kind == ADD_STROKE:
             stroke_at.setdefault(e, i)
-        elif kind == ADD_PATCH:
-            created[e] = i
-            batch.setdefault(cur, []).append(e)
+            batch[e] = pending
+            owner.update((q, e) for q in pending)
+            pending = []
+        elif kind == DELETE_STROKE:
+            pending = []
     del_s = {e for kind, e in seq if kind == DELETE_STROKE}
     del_s |= {e + 1 for e in del_s}
     del_p = {e for kind, e in seq if kind == DELETE_PATCH}
@@ -110,7 +115,8 @@ def alive_patches(session):
         if not p["foundByAlgo"]:
             continue
         out["found"] += 1
-        P, t = set(p["strokesID"]), created.get(p["id"], -1)
+        P = set(p["strokesID"])
+        t = stroke_at[owner[p["id"]]] if p["id"] in owner else -1
         if p["id"] in del_p:
             out["deleted"] += 1
             continue
@@ -119,7 +125,7 @@ def alive_patches(session):
             continue
         split = False
         for s, ids in batch.items():
-            if s is None or stroke_at.get(s, -1) <= t:
+            if stroke_at[s] <= t:
                 continue
             qs = [set(patches[q]["strokesID"]) for q in ids if {s, s + 1} & set(patches[q]["strokesID"])]
             if any(P <= (a | b) for a, b in itertools.combinations(qs, 2)):
@@ -138,13 +144,15 @@ def self_test():
                 "allCreatedPatches": [{"id": i, "foundByAlgo": True, "strokesID": s} for i, s in patches]}
     S, D, P = ADD_STROKE, DELETE_STROKE, ADD_PATCH
     checks = [
-        ("unsplit patch is kept", log([(S, 1), (S, 2), (S, 3), (S, 4), (P, 10)], [(10, [1, 2, 3, 4])]), 1),
-        ("split patch is dropped", log([(S, 1), (S, 2), (S, 3), (S, 4), (P, 10), (S, 5), (P, 11), (P, 12)],
+        ("unsplit patch is kept", log([(S, 1), (S, 2), (S, 3), (P, 10), (S, 4)], [(10, [1, 2, 3, 4])]), 1),
+        ("split patch is dropped", log([(S, 1), (S, 2), (S, 3), (P, 10), (S, 4), (P, 11), (P, 12), (S, 5)],
                                        [(10, [1, 2, 3, 4]), (11, [1, 2, 5, 3]), (12, [3, 4, 5, 1])]), 2),
+        ("siblings of one stroke do not split each other",
+         log([(S, 1), (S, 2), (S, 3), (P, 10), (P, 11), (S, 4)], [(10, [1, 2, 4]), (11, [2, 3, 4])]), 2),
         ("a neighbour sharing two strokes does not split",
-         log([(S, 1), (S, 2), (S, 3), (S, 4), (P, 10), (S, 5), (S, 6), (P, 11)],
+         log([(S, 1), (S, 2), (S, 3), (P, 10), (S, 4), (S, 5), (P, 11), (S, 6)],
              [(10, [1, 2, 3, 4]), (11, [2, 3, 5, 6])]), 2),
-        ("a deleted stroke drops its patches", log([(S, 1), (S, 2), (S, 3), (P, 10), (D, 2)], [(10, [1, 2, 3])]), 0),
+        ("a deleted stroke drops its patches", log([(S, 1), (S, 2), (P, 10), (S, 3), (D, 2)], [(10, [1, 2, 3])]), 0),
     ]
     bad = 0
     for name, session, want in checks:
