@@ -46,6 +46,7 @@ var _strokes: Array = []
 var _plan_path := ""
 var _calib_frames := 0
 var _strokes_file := ""
+var _frame_cam: Camera3D = null
 
 func _say(s: String) -> void:
 	print(s)
@@ -81,6 +82,7 @@ func _initialize() -> void:
 
 func _process(_dt: float) -> bool:
 	_frames += 1
+	_follow_body()
 	if _phase == "done":
 		return false
 	if (Time.get_ticks_msec() - _t0) / 1000.0 > _wall_s:
@@ -96,7 +98,9 @@ func _process(_dt: float) -> bool:
 				return false
 			_main.pipeline.state_changed.connect(func(st: String, _rec: Dictionary): _say("STATE " + st))
 			# Every stroke in its saved order, all in one frame: sequenced, not paced.
-			var o := {"strokes_from": _strokes_file, "allow_fixture": "infer,rig", "stop_after": _stop_after(), "pen_instant": true}
+			# --paced feeds them frame by frame, for a recording.
+			var o := {"strokes_from": _strokes_file, "allow_fixture": "infer,rig", "stop_after": _stop_after(),
+					"pen_instant": _arg("paced") == ""}
 			# The layer's own replay settings, then any given on the command line.
 			var meta: Dictionary = StrokesUsd.from_file(_main.usd, _strokes_file).get("meta", {})
 			for k in ["crossings", "body_snap"]:
@@ -242,10 +246,31 @@ static func _expected(meta: Dictionary) -> Dictionary:
 		return {}
 	return e
 
+# --frame: a camera on the drawn body from the front quarter, for a recording.
+func _follow_body() -> void:
+	if _arg("frame") == "" or _main == null:
+		return
+	var body := _main.get_node_or_null("World/XROrigin3D/Canvas/Body") as Node3D
+	if body == null:
+		return
+	if _frame_cam == null:
+		_frame_cam = Camera3D.new()
+		_frame_cam.fov = 40.0
+		_main.get_node("World").add_child(_frame_cam)
+		_frame_cam.current = true
+	var at := body.global_position + Vector3(0, float(_arg("frame_up", "1.0")), 0)
+	var dist := float(_arg("frame_dist", "2.6"))
+	_frame_cam.global_position = at + Vector3(0.45, 0.15, 1.0).normalized() * dist
+	_frame_cam.look_at(at, Vector3.UP)
+
+
 func _finish(verdict: String) -> void:
 	_say("RESULT: " + verdict)
 	_phase = "done"
 	if _out != null:
 		_out.close()
 		_out = null
+	var hold := float(_arg("hold", "0"))
+	if hold > 0.0:
+		await create_timer(hold).timeout
 	quit(0 if verdict == "PASS" else 1)
