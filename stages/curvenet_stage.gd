@@ -12,7 +12,7 @@ extends "res://stages/stage_base.gd"
 const MeshWire := preload("res://util/mesh_wire.gd")
 const REQUIRED := ["cn_reset", "cn_set_param", "cn_set_body", "pen_begin", "pen_point", "pen_end", "pen_end_with_crossings", "patch_count",
 		"curvenet_build", "curvenet_curves", "curvenet_knots", "mesh_build", "mesh_vertices", "mesh_indices",
-		"mesh_boundary_loops", "mesh_rims"]
+		"mesh_boundary_loops", "mesh_rims", "session_replay"]
 
 func _ready() -> void:
 	stage_name = "curvenet"
@@ -55,6 +55,10 @@ func pen_end_with_crossings(id: int, crossings: PackedFloat32Array) -> String:
 # Finalize a recorded stroke, joined only at its recorded junctions (flat xyz).
 func pen_end_recorded(id: int, junctions: PackedFloat32Array) -> String:
 	return str(call_now("pen_end_recorded", [id, junctions]))
+
+# A CASSIE session subset through the graph port: "ok cycles=N user=M ..." then a stroke-id line per cycle.
+func session_replay(json: String) -> String:
+	return str(call_now("session_replay", [json]))
 
 func patches() -> int:
 	var r = call_now("patch_count")

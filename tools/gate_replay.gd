@@ -11,7 +11,8 @@
 #
 # --strokes replays saved strokes with no XR and checks them against the
 # layer's expected counts; --control=drop_seam drops seam_back and must FAIL
-# at MESH.
+# at MESH. A layer carrying a CASSIE "session" (dress) passes only when
+# curvenet's graph port replays it to every one of its "expected_cycles".
 #
 # The pipeline runs with pen = "xr" and stops after MESH, so every stroke comes
 # from xr-grid's SketchTool on the right controller: OXRSys tracking packet ->
@@ -47,6 +48,7 @@ var _plan_path := ""
 var _calib_frames := 0
 var _strokes_file := ""
 var _frame_cam: Camera3D = null
+var _session := {}
 
 func _say(s: String) -> void:
 	print(s)
@@ -108,6 +110,8 @@ func _process(_dt: float) -> bool:
 					o[k] = str(meta[k]) if k == "crossings" else str(meta[k]).to_lower() not in ["0", "false"]
 				if _arg(k) != "":
 					o[k] = _arg(k) if k == "crossings" else _arg(k) == "true"
+			# The session replay is the graph port alone, so it runs before the strokes.
+			_session = _session_check(_main.pipeline, meta)
 			_say("replay settings: crossings %s body_snap %s" % [o.get("crossings", "mujoco"), o.get("body_snap", true)])
 			match _arg("control"):
 				"":
@@ -215,14 +219,64 @@ func _evaluate_file() -> void:
 			best = str(ends[i])
 	_say("pen_ends: %d, first not ok at %d (%s); last ok: %s" % [ends.size(), first_bad,
 			str(ends[first_bad]).left(160) if first_bad >= 0 else "-", best.left(200)])
+	var session := _session
 	if p.state != "DONE":
 		_finish("FAIL (%s)" % p.status())
+		return
+	if not session.is_empty():
+		_finish("PASS" if session.ok else "FAIL (%s)" % session.why)
 		return
 	if exp.is_empty():
 		_finish("FAIL (%s has no readable expected in its customLayerData)" % _strokes_file.get_file())
 		return
 	var ok: bool = strokes == planned and cycles == int(exp.cycles) and openings == int(exp.openings)
 	_finish("PASS" if ok else "FAIL (counts differ from expected)")
+
+# A layer with a "session" replays it through curvenet's CASSIE graph port and
+# matches the port's cycles, as sorted stroke-id lists, against "expected_cycles".
+# {} when the layer has no session.
+func _session_check(p, meta: Dictionary) -> Dictionary:
+	if not meta.has("session"):
+		return {}
+	var expected = JSON.parse_string(str(meta.get("expected_cycles", "")))
+	if typeof(expected) != TYPE_ARRAY:
+		_say("session: no readable expected_cycles")
+		return {"ok": false, "why": "session without expected_cycles"}
+	if p.curvenet == null:
+		return {"ok": false, "why": "no curvenet stage for the session replay"}
+	while p.curvenet.busy():
+		OS.delay_msec(20)
+	p.curvenet.poll()
+	var t0 := Time.get_ticks_usec()
+	var r: String = p.curvenet.session_replay(str(meta.session))
+	var ms := (Time.get_ticks_usec() - t0) / 1000
+	var lines := r.strip_edges().split("\n")
+	if lines.is_empty() or not lines[0].begins_with("ok "):
+		_say("session: replay failed in %d ms: %s" % [ms, r.left(200)])
+		return {"ok": false, "why": "session replay failed"}
+	var port := {}
+	for i in range(1, lines.size()):
+		port[lines[i].strip_edges()] = true
+	var want := {}
+	for c in expected:
+		want[" ".join(Array(c).map(func(v): return str(int(v))))] = true
+	var exact := 0
+	for k in want:
+		if port.has(k):
+			exact += 1
+	var expected_only := want.size() - exact
+	var port_only := port.size() - exact
+	_say("session: %s (%d ms)" % [lines[0], ms])
+	_say("session: cycles %d, exact matches %d of %d, expected-only %d, port-only %d" % [port.size(), exact,
+			want.size(), expected_only, port_only])
+	for k in want:
+		if not port.has(k):
+			_say("session: expected-only " + k)
+	for k in port:
+		if not want.has(k):
+			_say("session: port-only " + k)
+	var ok: bool = exact == want.size() and want.size() == expected.size()
+	return {"ok": ok, "why": "session cycles: %d of %d expected matched" % [exact, want.size()]}
 
 # What MESH measured of the garment shell.
 static func _mesh_line(p) -> String:
@@ -267,7 +321,8 @@ func _follow_body() -> void:
 func _finish(verdict: String) -> void:
 	if _main != null and _main.get("pipeline") != null:
 		var pl = _main.pipeline
-		_say("progress: %d strokes committed" % pl.data.get("pen_ends", []).size())
+		var pe: Array = pl.data.get("pen_ends", [])
+		_say("progress: %d strokes committed; last: %s" % [pe.size(), str(pe[-1]).left(200) if not pe.is_empty() else "-"])
 		if _arg("probe_cycles") != "" and pl.curvenet != null:
 			while pl.curvenet.busy():
 				OS.delay_msec(20)

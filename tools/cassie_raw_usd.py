@@ -10,7 +10,7 @@ the session mirrored. The app mirrors across x = MIRROR_X in canvas space and le
 unmirrored when it lies on that plane: planar, its plane facing x, and snapped onto the plane by
 a recorded constraint. Each stroke carries the junctions the app recorded for it (its applied
 intersection constraints), which the replay joins the graph at. Points go to the Body frame as
-curves_usd does (Z negated).
+curves_usd does (Z negated), then PLACEMENT seats them on the avatar body (the session stays in canvas space).
 
 The expectation is the number of cycles the app's algorithm had at the end. The export logs every
 patch it ever created and not the ones it dropped, so a found patch counts unless it was deleted,
@@ -18,8 +18,12 @@ lost a stroke to deletion, or was split: a later stroke has two patches in its b
 logged while it was committed, just before its ADD_STROKE) that contain it and together hold all
 of the earlier patch's strokes. A mirror stroke's id is its original's
 plus one, so deleting a stroke deletes its mirror, and a stroke splits with its mirror too.
+
+The layer also carries the session subset the CASSIE graph port replays ("session", numbers in
+the app's own spelling) and the alive patches as sorted stroke-id lists ("expected_cycles").
 """
 import argparse
+import decimal
 import itertools
 import json
 import os
@@ -30,6 +34,10 @@ import numpy as np
 MIRROR_X = 0.125
 ADD_STROKE, DELETE_STROKE, ADD_PATCH, DELETE_PATCH = 1, 2, 3, 4
 SAMPLES_PER_SEGMENT = 64
+# Body-frame similarity that seats the dress on fixtures/foxgirl/avatar.obj: q = (p - centre) * scale + to.
+PLACEMENT = {"centre": [0.125, 1.0723, -0.1852], "scale": 1.25, "to": [0.0, 1.2223, 0.027],
+             "inside_before": 1139, "inside_after": 40, "samples": 11619, "body": "fixtures/foxgirl/avatar.obj",
+             "rule": "winding number > 0.5 over every stroke sample"}
 
 
 def samples(stroke):
@@ -110,7 +118,7 @@ def alive_patches(session):
     del_s = {e for kind, e in seq if kind == DELETE_STROKE}
     del_s |= {e + 1 for e in del_s}
     del_p = {e for kind, e in seq if kind == DELETE_PATCH}
-    out = {"found": 0, "deleted": 0, "deleted_stroke": 0, "split": 0, "alive": 0}
+    out = {"found": 0, "deleted": 0, "deleted_stroke": 0, "split": 0, "alive": 0, "alive_strokes": []}
     for p in patches.values():
         if not p["foundByAlgo"]:
             continue
@@ -135,7 +143,41 @@ def alive_patches(session):
             out["split"] += 1
             continue
         out["alive"] += 1
+        out["alive_strokes"].append(sorted(set(p["strokesID"])))
     return out
+
+
+def place(points):
+    """PLACEMENT on Body-frame points; strokes and junctions take the same move, so junctions stay on their strokes."""
+    c = np.asarray(PLACEMENT["centre"], np.float64)
+    t = np.asarray(PLACEMENT["to"], np.float64)
+    return ((np.asarray(points, np.float64) - c) * PLACEMENT["scale"] + t).astype(np.float32)
+
+
+def raw_json(v):
+    """JSON with each number in its source spelling (parsed as Decimal), so the guest reads the app's floats."""
+    if isinstance(v, dict):
+        return "{" + ",".join(json.dumps(k) + ":" + raw_json(x) for k, x in v.items()) + "}"
+    if isinstance(v, list):
+        return "[" + ",".join(raw_json(x) for x in v) + "]"
+    if isinstance(v, decimal.Decimal):
+        return str(v)
+    return json.dumps(v)
+
+
+def session_subset(data):
+    """What the graph port's session replay reads, in canvas space; it mirrors on its own."""
+    raw = json.loads(data, parse_float=decimal.Decimal)
+    states = [{k: st[k] for k in ("interactionType", "elementID", "mirroring", "canvasScale", "time")}
+              for st in raw["systemStates"]]
+    added = {st["elementID"] for st in states if st["interactionType"] == ADD_STROKE}
+    keep = ("position", "isIntersection", "isAtExistingNode", "isAtNewEndpoint")
+    strokes = [{"id": s["id"], "ctrlPts": s["ctrlPts"], "closedLoop": s["closedLoop"], "planar": s["planar"],
+                "appliedPositionConstraints": [{k: c[k] for k in keep} for c in s["appliedPositionConstraints"]],
+                "rejectedPositionConstraints": [{k: c[k] for k in keep} for c in s["rejectedPositionConstraints"]]}
+               for s in raw["allSketchedStrokes"] if s["id"] in added]
+    patches = [{k: p[k] for k in ("id", "foundByAlgo", "strokesID")} for p in raw["allCreatedPatches"]]
+    return raw_json({"systemStates": states, "allSketchedStrokes": strokes, "allCreatedPatches": patches})
 
 
 def self_test():
@@ -181,6 +223,8 @@ def main(argv):
     counts = alive_patches(session)
     body = cu.to_body([s.astype(np.float32) for s in strokes])
     body_joins = cu.to_body([j.astype(np.float32) for j in joins])
+    body = [place(b) for b in body]
+    body_joins = [place(j) for j in body_joins]
     meta = {
         "converter": "transport-meshing-pen tools/cassie_raw_usd.py",
         "source": os.path.basename(a.raw),
@@ -197,6 +241,9 @@ def main(argv):
         "stop_after": "AUTHOR",
         "crossings": "recorded",
         "body_snap": False,
+        "placement": json.dumps(PLACEMENT),
+        "session": session_subset(data),
+        "expected_cycles": json.dumps(sorted(counts["alive_strokes"])),
         "junctions": json.dumps([[[round(float(v), 7) for v in p] for p in j] for j in body_joins]),
     }
     text = cu.write_usda(body, names, (), meta)
