@@ -60,7 +60,7 @@ const DEFAULTS := {
 	"pen": "scripted",        # scripted | xr
 	"avatar": "foxgirl",      # the infer/rig fixture body under fixtures/: foxgirl | maro
 	"pen_instant": false,     # feed every pen event in order in one frame, not paced per frame
-	"crossings": "mujoco",    # "curvenet": curvenet finds them; "cassie": the beautifier's intersections are the junctions
+	"crossings": "mujoco",    # "curvenet": skip the MuJoCo guest and let curvenet find each stroke's crossings
 	"body_snap": true,        # false: curvenet's snap_radius 0, for a sketch not authored on this body
 	"drop_seam": false,       # control: the back seam is not drawn, or seam_back is dropped from strokes_from
 	                          # -> FAILED(MESH)
@@ -328,8 +328,6 @@ func _author(first: bool) -> void:
 			return
 		if not bool(opts.body_snap):
 			curvenet.set_param("snap_radius", 0.0)
-		if str(opts.crossings) == "cassie":
-			curvenet.set_param("intervals", 1.0)
 		data.pen_ends = []
 		data.authored = []
 		_authored_of = {}
