@@ -19,16 +19,19 @@ set(GGML_RD_ROOT ${WEFT_ROOT}/2-contract/ggml-rd)
 set(CURVENET_ROOT ${WEFT_ROOT}/3-interactor/curvenet)
 set(LASSO_ROOT ${WEFT_ROOT}/3-interactor/lasso)
 set(USD_GUEST_ROOT ${WEFT_ROOT}/3-interactor/usd-guest)
+set(MOTION_GUEST_ROOT ${WEFT_ROOT}/3-interactor/motion-guest)
+set(KIMODO_GGML_ROOT ${WEFT_ROOT}/3-interactor/kimodo-ggml)
 set(GGML_ROOT ${WEFT_ROOT}/2-contract/ggml)
 
 # __FILE__ (ggml's asserts) and debug info name sources relative to their
 # repository, as they were named inside interactor-dress-on before the split,
 # so a committed ELF names neither the machine nor the checkout it was built in.
 add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}/=")
-foreach(root GUEST_RUNTIME_ROOT GUEST_COMMON_ROOT GGML_RD_ROOT CURVENET_ROOT LASSO_ROOT USD_GUEST_ROOT)
+foreach(root GUEST_RUNTIME_ROOT GUEST_COMMON_ROOT GGML_RD_ROOT CURVENET_ROOT LASSO_ROOT USD_GUEST_ROOT MOTION_GUEST_ROOT)
 	add_compile_options("-ffile-prefix-map=${${root}}/=")
 endforeach()
-add_compile_options("-ffile-prefix-map=${GGML_ROOT}/=vendor/ggml/")
+add_compile_options("-ffile-prefix-map=${GGML_ROOT}/=vendor/ggml/"
+	"-ffile-prefix-map=${KIMODO_GGML_ROOT}/=vendor/kimodo-ggml/")
 
 # The guest ELF. It builds against godot-sandbox's guest API
 # (contract-guest-runtime's vendor/sandbox-api) and nothing else; the riscv64
@@ -183,6 +186,35 @@ set_source_files_properties(${GGML_ROOT}/tests/test-backend-ops.cpp PROPERTIES
 target_include_directories(ggml_test PRIVATE ${GUEST_RUNTIME_ROOT}/guest ${GGML_RD_ROOT}/guest/ggml_test)
 target_link_libraries(ggml_test PRIVATE ggml_rd pump ggml ggml-cpu ggml-base)
 target_link_options(ggml_test PRIVATE -Wl,--wrap=ggml_backend_init_by_type)
+
+# motion.elf: Kimodo-SOMA and MotionBricks-G1 on ggml-rd (interactor-motion-guest), with the weights
+# reaching the RD buffer by the pump's UPLOAD; MotionBricks also runs live, steered each frame.
+set(_mb ${MOTION_GUEST_ROOT}/vendor/motion-bricks-ggml)
+add_stage_elf(motion
+	${MOTION_GUEST_ROOT}/guest/motion/main.cpp
+	${MOTION_GUEST_ROOT}/guest/motion/motion_io.cpp
+	${MOTION_GUEST_ROOT}/guest/motion/kimodo_weights.cpp
+	${MOTION_GUEST_ROOT}/guest/motion/mb_runtime.cpp
+	${MOTION_GUEST_ROOT}/guest/motion/retarget.cpp
+	${KIMODO_GGML_ROOT}/src/denoiser.cpp
+	${KIMODO_GGML_ROOT}/src/diffusion.cpp
+	${KIMODO_GGML_ROOT}/src/motion_rep.cpp
+	${_mb}/src/agent.cpp
+	${_mb}/src/capi.cpp
+	${_mb}/src/decoder.cpp
+	${_mb}/src/error.cpp
+	${_mb}/src/model.cpp
+	${_mb}/src/motion_rep.cpp
+	${_mb}/src/planner.cpp
+	${_mb}/src/pose.cpp
+	${_mb}/src/root.cpp
+	${_mb}/src/style.cpp
+)
+target_include_directories(motion PRIVATE ${GUEST_RUNTIME_ROOT}/guest ${MOTION_GUEST_ROOT}/guest/motion
+	${KIMODO_GGML_ROOT}/src ${_mb}/include ${_mb}/src)
+target_compile_definitions(motion PRIVATE MOTIONBRICKS_HAVE_GGML=1 MOTIONBRICKS_GUEST_IO=1 MOTIONBRICKS_BUILD=1)
+target_compile_options(motion PRIVATE -ffp-contract=off)
+target_link_libraries(motion PRIVATE ggml_rd pump ggml ggml-base)
 
 # Gate 0G: usd_probe.elf, and Cut U: usd.elf -- OpenUSD 26.05 from bytes (gates/0g-openusd, gates/U-usd).
 include(${USD_GUEST_ROOT}/cmake/usd.cmake)
