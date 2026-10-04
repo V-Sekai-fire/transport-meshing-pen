@@ -59,6 +59,7 @@ const DEFAULTS := {
 	"force_fixture": [],       # stages run as their fixture even when present (to reach what follows them)
 	"pen": "scripted",        # scripted | xr
 	"avatar": "foxgirl",      # the infer/rig fixture body under fixtures/: foxgirl | maro
+	"pen_instant": false,     # feed every pen event in order in one frame, not paced per frame
 	"drop_seam": false,       # control: the back seam is not drawn, or seam_back is dropped from strokes_from
 	                          # -> FAILED(MESH)
 	"closed_rings": false,
@@ -333,7 +334,7 @@ func _author(first: bool) -> void:
 			pass # the bridge replays the same source, with its visuals
 		return
 	var n := 0
-	while not pen_queue.is_empty() and n < PEN_EVENTS_PER_FRAME:
+	while not pen_queue.is_empty() and (opts.pen_instant or n < PEN_EVENTS_PER_FRAME):
 		var e: Dictionary = pen_queue.pop_front()
 		n += 1
 		match e.kind:
@@ -381,7 +382,7 @@ func _author(first: bool) -> void:
 				if r.begins_with("FAIL"):
 					_fail("pen_end stroke %d: %s" % [e.stroke, r])
 					return
-		if e.kind == "end":
+		if e.kind == "end" and not opts.pen_instant:
 			break # at most one stroke ends per frame
 	if not pen_queue.is_empty() or not pen_finished:
 		return
