@@ -29,6 +29,8 @@
 # full skirt's 2 cycles with 2 openings (Gate 8's pen criteria).
 extends SceneTree
 
+const StrokesUsd := preload("res://util/strokes_usd.gd")
+
 const SCENE := "res://xr_main.tscn"
 const CALIB := Vector3(0.0, 1.2, -0.3)
 const FULL_SKIRT_CYCLES := 2
@@ -93,7 +95,8 @@ func _process(_dt: float) -> bool:
 			if _frames < 5:
 				return false
 			_main.pipeline.state_changed.connect(func(st: String, _rec: Dictionary): _say("STATE " + st))
-			var o := {"strokes_from": _strokes_file, "allow_fixture": "infer,rig", "stop_after": "MESH"}
+			# Every stroke in its saved order, all in one frame: sequenced, not paced.
+			var o := {"strokes_from": _strokes_file, "allow_fixture": "infer,rig", "stop_after": _stop_after(), "pen_instant": true}
 			match _arg("control"):
 				"":
 					pass
@@ -203,6 +206,12 @@ static func _mesh_line(p) -> String:
 	var m: Dictionary = p.data.get("mesh", {})
 	return "mesh %s v %s f, %s boundary loops, %s rims, %s components" % [str(m.get("vertices", -1)),
 			str(m.get("triangles", -1)), str(m.get("loops", -1)), str(m.get("rims", -1)), str(m.get("components", -1))]
+
+# Where the layer's replay stops: its own stop_after (a dress stops after AUTHOR, since MESH checks a
+# skirt's shell), MESH otherwise. Read through usd.elf, like every other value of the layer.
+func _stop_after() -> String:
+	var saved: Dictionary = StrokesUsd.from_file(_main.usd, _strokes_file)
+	return str(saved.get("meta", {}).get("stop_after", "MESH"))
 
 # The layer's expected counts. usd.elf hands every customLayerData value back
 # as text, so it is JSON; {} when missing, unreadable, or without both counts.
