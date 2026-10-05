@@ -10,7 +10,7 @@
 extends "res://stages/stage_base.gd"
 
 const MeshWire := preload("res://util/mesh_wire.gd")
-const REQUIRED := ["cn_reset", "cn_set_param", "cn_set_body", "pen_begin", "pen_point", "pen_end", "pen_end_with_crossings", "patch_count",
+const REQUIRED := ["cn_reset", "cn_set_param", "cn_set_body", "pen_begin", "pen_point", "pen_end", "pen_end_with_crossings", "pen_end_recorded", "mesh_deferred", "patch_count",
 		"curvenet_build", "curvenet_curves", "curvenet_knots", "mesh_build", "mesh_vertices", "mesh_indices",
 		"mesh_boundary_loops", "mesh_rims", "session_replay"]
 

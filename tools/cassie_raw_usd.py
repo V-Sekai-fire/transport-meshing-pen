@@ -269,7 +269,6 @@ def main(argv):
         "expected": json.dumps({"strokes": len(strokes), "cycles": counts["alive"], "openings": 0}),
         "expected_source": ("found patches the app still had at the end: %(found)d found, less %(deleted)d deleted, "
                             "%(deleted_stroke)d with a deleted stroke, %(split)d split by a later stroke" % counts),
-        "stop_after": "AUTHOR",
         "crossings": "recorded",
         "body_snap": False,
         "placement": json.dumps(PLACEMENT),

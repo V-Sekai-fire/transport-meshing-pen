@@ -490,6 +490,11 @@ func _author(first: bool) -> void:
 	if not pen_queue.is_empty() or not pen_finished:
 		return
 	var last: String = data.pen_ends[-1] if not data.pen_ends.is_empty() else ""
+	# Recorded strokes found their cycles without meshing them; mesh them once, now.
+	if str(opts.crossings) == "recorded":
+		var t_mesh := Time.get_ticks_msec()
+		var left = curvenet.call_now("mesh_deferred", [1 << 20])
+		print("[dress-on] mesh_deferred: %s left after %d ms" % [str(left), Time.get_ticks_msec() - t_mesh])
 	var cb: String = curvenet.build_curvenet()
 	var kw = curvenet.knots()
 	var knots: Array = MeshWire.knots(kw) if typeof(kw) == TYPE_PACKED_FLOAT32_ARRAY else []

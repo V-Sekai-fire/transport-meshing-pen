@@ -48,10 +48,11 @@ var _plan_path := ""
 var _calib_frames := 0
 var _strokes_file := ""
 var _frame_cam: Camera3D = null
+var _cued := false
 var _session := {}
 
 func _say(s: String) -> void:
-	print(s)
+	print("[%5.1fs] %s" % [Time.get_ticks_msec() / 1000.0, s])
 	if _out != null:
 		_out.store_line(s)
 		_out.flush()
@@ -65,7 +66,7 @@ func _initialize() -> void:
 		if a.begins_with("--"):
 			var kv := a.substr(2).split("=", true, 1)
 			_args[kv[0]] = kv[1] if kv.size() > 1 else "1"
-	_wall_s = float(_arg("wallclock", "600"))
+	_wall_s = float(_arg("wallclock", "60"))
 	_plan_path = _arg("plan", OS.get_user_data_dir().path_join("replay_plan.json"))
 	var out := _arg("out", OS.get_user_data_dir().path_join("replay_results.txt"))
 	DirAccess.make_dir_recursive_absolute(out.get_base_dir())
@@ -78,6 +79,12 @@ func _initialize() -> void:
 		_finish("FAIL (cannot load %s)" % SCENE)
 		return
 	_main = ps.instantiate()
+	# The station takes ~47 s to set up before the first frame and no replay needs it.
+	if _arg("station") == "":
+		var station: Node = _main.get_node_or_null("World/Station")
+		if station != null:
+			station.get_parent().remove_child(station)
+			station.free()
 	root.add_child(_main)
 	_strokes_file = _arg("strokes")
 	_phase = "replay_wait" if _strokes_file != "" else "wait"
@@ -85,6 +92,9 @@ func _initialize() -> void:
 func _process(_dt: float) -> bool:
 	_frames += 1
 	_follow_body()
+	if not _cued and _main != null and _main.get("pipeline") != null and _main.pipeline.data.get("pen_ends", []).size() > 0:
+		_cued = true
+		_say("cue: first stroke committed")
 	if _phase == "done":
 		return false
 	if (Time.get_ticks_msec() - _t0) / 1000.0 > _wall_s:
@@ -93,6 +103,8 @@ func _process(_dt: float) -> bool:
 		return false
 	match _phase:
 		"replay_wait":
+			if _frames == 1:
+				_say("first frame")
 			# Saved-stroke replay: no XR, no OXRSys hand. The pipeline reads the
 			# strokes straight from the .usda (strokes_from) and feeds curvenet,
 			# so the run is deterministic and needs no simulator.

@@ -19,7 +19,6 @@
         string source_blake3 = "dd825363536d"
         string source_folder = "raw_data"
         string source_rev = "ed6870d"
-        string stop_after = "AUTHOR"
         int strokes_deleted = 46
         int strokes_drawn = 126
     }
