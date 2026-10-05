@@ -1,6 +1,6 @@
 # transport-meshing-pen
 
-The meshing pen: an XR project where a person draws a character and outfit with their hands, wears it, and moves in it where others see it.
+The meshing pen: an XR project where a person draws a character and outfit with their hands, and wears it.
 
 ## What it is for
 
@@ -12,7 +12,7 @@ It is the hand end of the loop: strokes, pinch and world-grab, and the controlle
 elixir tools/build.exs
 ```
 
-It builds the guest programs from the goal manifest's sibling checkouts and runs the project's gates. Open the project in a double-precision engine editor to run it.
+It builds the guest programs from the goal manifest's sibling checkouts and runs the project's gates. Open the project in an engine editor built with the sandbox module to run it, since the guests need that module.
 
 ## Licence
 
