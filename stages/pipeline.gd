@@ -37,6 +37,10 @@ var curvenet = null
 var mujoco = null
 const PORT_TIMEOUT_MS := 60000 # triangulating the port's cycles; past this the run fails
 const PORT_WELD_M := 0.003
+const PORT_SLICES_PER_WORKER := 3
+var _pool: Array = []
+var _pool_full := false
+const POOL_MEM_MB := 256
 var usd = null # stages/usd_stage.gd: strokes_from and saving strokes
 
 var opts := {}
@@ -70,6 +74,7 @@ const DEFAULTS := {
 	"closed_rings": false,
 	"no_boundary": false,     # control: the rings are ordinary strokes, so their caps are patched too
 	"mesh_edge": 0.03,        # curvenet mesh_build target_edge_length (m); 0 = no remesh
+	"mesh_workers": 1,        # recorded strokes: curvenet sandboxes meshing patches at once; 0 = min(cores - 1, 8)
 	"weld_eps": 1e-5,
 	"stop_after": "",         # "MESH" for --gate=pen
 	"strokes_from": "",       # a .usda of saved strokes (util/strokes_usd.gd, via usd.elf): replaces the
@@ -329,8 +334,14 @@ func _port_start() -> void:
 	if not meta.has("session"):
 		_fail("crossings recorded: %s carries no session" % opts.strokes_from)
 		return
-	var t0 := Time.get_ticks_msec()
-	var r: String = curvenet.session_replay(str(meta.session))
+	var st: String = curvenet.start("session_replay", [str(meta.session)])
+	if not st.begins_with("STARTED"):
+		_fail("session_replay: " + st)
+		return
+	data.port = {"phase": "session"}
+
+# The session replay is back: cut the boundaries and hand them to the mesh pool.
+func _port_cut(r: String, session_ms: int) -> void:
 	var t1 := Time.get_ticks_msec()
 	var lines := r.strip_edges().split("\n")
 	if lines.is_empty() or not lines[0].begins_with("ok "):
@@ -340,8 +351,7 @@ func _port_start() -> void:
 	for s in data.get("layer_strokes", []):
 		by_name[str(s.name)] = s.points
 	var edge := float(opts.mesh_edge) if float(opts.mesh_edge) > 0.0 else 0.02
-	var flat := PackedFloat32Array()
-	var counts := PackedInt32Array()
+	var bounds := []
 	var missing := []
 	for i in range(1, lines.size()):
 		var parts := lines[i].split(" |", true, 1)
@@ -358,35 +368,121 @@ func _port_start() -> void:
 			pts.remove_at(pts.size() - 1)
 		if pts.size() < 3:
 			continue
-		for q in pts:
-			flat.append_array([q.x, q.y, q.z])
-		counts.append(pts.size())
+		bounds.append(pts)
 	data.pen_ends = by_name.keys()
-	data.port = {"session": lines[0], "cycles": lines.size() - 1, "boundaries": counts.size(), "missing_strokes": missing,
-			"replay": r, "session_ms": t1 - t0, "boundary_ms": Time.get_ticks_msec() - t1}
-	var st: String = curvenet.start("boundary_patches", [flat, counts, edge])
-	if not st.begins_with("STARTED"):
-		_fail("boundary_patches: " + st)
+	var t2 := Time.get_ticks_msec()
+	var pool := _mesh_pool()
+	var slices := []
+	var per := maxi(1, ceili(float(bounds.size()) / float(pool.size() * PORT_SLICES_PER_WORKER)))
+	for a in range(0, bounds.size(), per):
+		slices.append({"bounds": bounds.slice(a, a + per), "worker": -1, "made": -1})
+	data.port = {"session": lines[0], "cycles": lines.size() - 1, "boundaries": bounds.size(), "missing_strokes": missing,
+			"replay": r, "session_ms": session_ms, "boundary_ms": t2 - t1, "pool_ms": Time.get_ticks_msec() - t2,
+			"workers": pool.size(), "slices": slices, "next": 0, "running": {}, "t0": Time.get_ticks_msec(), "edge": edge,
+			"slowest_ms": 0}
+	for w in pool:
+		if w != curvenet:
+			w.call_now("cn_reset")
 
+# Hands the next slice to every idle worker; once every slice is back, gathers the
+# patches, in slice order, into the main curvenet sandbox for MESH.
 func _port_poll() -> void:
-	var pr: Dictionary = curvenet.poll()
-	if not pr.done:
-		if int(pr.host_ms) > PORT_TIMEOUT_MS:
-			_fail("boundary_patches: still triangulating after %d s" % (PORT_TIMEOUT_MS / 1000))
+	var port: Dictionary = data.port
+	if port.get("phase", "") == "session":
+		var sp: Dictionary = curvenet.poll()
+		if not sp.done:
+			return
+		_port_cut(str(sp.result), int(sp.host_ms))
 		return
-	var r := str(pr.result)
-	data.port.patches = r
-	data.port.triangulate_ms = int(pr.host_ms)
-	print("[dress-on] port: %s; %d cycles, %d boundaries, missing strokes %s; session %d ms, boundaries %d ms, triangulate %d ms: %s" % [
-			data.port.session, data.port.cycles, data.port.boundaries, str(data.port.missing_strokes), data.port.session_ms,
-			data.port.boundary_ms, data.port.triangulate_ms, r])
-	if not r.begins_with("ok"):
-		_fail("boundary_patches: " + r)
+	var pool := _mesh_pool()
+	for wi in pool.size():
+		var w = pool[wi]
+		if w.busy():
+			var pr: Dictionary = w.poll()
+			if int(pr.host_ms) > PORT_TIMEOUT_MS:
+				_fail("boundary_patches: worker %d still meshing after %d s" % [wi, PORT_TIMEOUT_MS / 1000])
+			continue
+		if port.running.has(wi):
+			var r := str(w.poll().result)
+			var sl: Dictionary = port.slices[port.running[wi]]
+			port.running.erase(wi)
+			port.slowest_ms = maxi(int(port.slowest_ms), int(w.poll().host_ms))
+			if not r.begins_with("ok"):
+				_fail("boundary_patches: " + r)
+				return
+			sl.made = _kv(r, "patches")
+		if port.next < port.slices.size():
+			var sl: Dictionary = port.slices[port.next]
+			var flat := PackedFloat32Array()
+			var counts := PackedInt32Array()
+			for pts in sl.bounds:
+				for q in pts:
+					flat.append_array([q.x, q.y, q.z])
+				counts.append(pts.size())
+			sl.worker = wi
+			port.running[wi] = port.next
+			port.next += 1
+			var st: String = w.start("boundary_patches", [flat, counts, port.edge, float(opts.mesh_edge)])
+			if not st.begins_with("STARTED"):
+				_fail("boundary_patches: " + st)
+				return
+	if port.next < port.slices.size() or not port.running.is_empty():
 		return
-	var patches := _kv(r, "patches")
-	data.counts = {"strokes": data.pen_ends.size(), "cycles": int(data.port.cycles), "openings": 0, "patches": patches,
+	port.mesh_ms = Time.get_ticks_msec() - int(port.t0)
+	var t_gather := Time.get_ticks_msec()
+	var v := PackedFloat32Array()
+	var f := PackedInt32Array()
+	var c := PackedInt32Array()
+	var parts := {}
+	for wi in pool.size():
+		var wv: PackedFloat32Array = pool[wi].call_now("parts_vertices")
+		var wf: PackedInt32Array = pool[wi].call_now("parts_triangles")
+		var wc: PackedInt32Array = pool[wi].call_now("parts_counts")
+		parts[wi] = {"v": wv, "f": wf, "c": wc, "av": 0, "af": 0, "ac": 0}
+	for sl in port.slices:
+		var src: Dictionary = parts[sl.worker]
+		for k in sl.made:
+			var nv: int = src.c[src.ac] * 3
+			var nf: int = src.c[src.ac + 1]
+			v.append_array(src.v.slice(src.av, src.av + nv))
+			f.append_array(src.f.slice(src.af, src.af + nf))
+			c.append_array([src.c[src.ac], nf])
+			src.av += nv
+			src.af += nf
+			src.ac += 2
+	var sr: String = curvenet.call_now("set_parts", [v, f, c])
+	port.gather_ms = Time.get_ticks_msec() - t_gather
+	var patches := c.size() / 2
+	print("[dress-on] port: %s; %d cycles, %d boundaries, missing strokes %s; session %d ms, boundaries %d ms, pool %d ms, triangulate+remesh %d ms on %d workers in %d slices (slowest %d ms), gather %d ms: %s" % [
+			port.session, port.cycles, port.boundaries, str(port.missing_strokes), port.session_ms, port.boundary_ms,
+			port.pool_ms, port.mesh_ms, port.workers, port.slices.size(), port.slowest_ms, port.gather_ms, sr])
+	if not sr.begins_with("ok"):
+		_fail("set_parts: " + sr)
+		return
+	port.erase("slices")
+	data.counts = {"strokes": data.pen_ends.size(), "cycles": int(port.cycles), "openings": 0, "patches": patches,
 			"pen_ends": data.pen_ends}
-	_goto("MESH", "strokes %d port cycles %d patches %d" % [data.pen_ends.size(), data.port.cycles, patches])
+	_goto("MESH", "strokes %d port cycles %d patches %d" % [data.pen_ends.size(), port.cycles, patches])
+
+# The curvenet sandboxes that mesh patches: the main stage, then extra stage nodes of
+# their own, each its own sub-thread group, made once.
+func _mesh_pool() -> Array:
+	var k := int(opts.mesh_workers) if int(opts.mesh_workers) > 0 else clampi(OS.get_processor_count() - 1, 1, 8)
+	while _pool.size() < k - 1 and not _pool_full:
+		var w: Node = load("res://stages/curvenet_stage.gd").new()
+		w.name = "curvenet_pool_%d" % _pool.size()
+		w.mem_mb = POOL_MEM_MB
+		add_child(w)
+		if not w.available():
+			_pool_full = true
+			w.queue_free()
+			break
+		_pool.append(w)
+	var out := [curvenet]
+	for i in mini(k - 1, _pool.size()):
+		if _pool[i].available():
+			out.append(_pool[i])
+	return out
 
 # A port stroke id's fitted polyline: stroke_<id>, or the mirror of stroke id - 1.
 static func _port_stroke(by_name: Dictionary, sid: int):
@@ -604,7 +700,8 @@ func _mesh(first: bool) -> void:
 	if first:
 		# Port cycles meet where the fitted strokes cross, which a sample can miss by a few mm.
 		var weld: float = maxf(float(opts.weld_eps), PORT_WELD_M) if data.has("port") else float(opts.weld_eps)
-		var r: String = curvenet.start_mesh_build(opts.mesh_edge, weld)
+		# Port patches were remeshed one by one in the pool, their seams held.
+		var r: String = curvenet.start_mesh_build(0.0 if data.has("port") else opts.mesh_edge, weld)
 		if not r.begins_with("STARTED"):
 			_fail("mesh_build: " + r)
 		return
@@ -637,6 +734,12 @@ func _mesh_done(g: Dictionary, note: String) -> void:
 			"finite": MeshTopo.all_finite(g.vertices)})
 	garment_ready.emit(g.vertices, g.triangles, "mesh")
 	if data.has("port"):
+		var hc := HashingContext.new()
+		hc.start(HashingContext.HASH_SHA256)
+		hc.update(PackedFloat32Array(g.vertices).to_byte_array())
+		hc.update(PackedInt32Array(g.triangles).to_byte_array())
+		data.mesh.sha256 = hc.finish().hex_encode().left(16)
+		print("[dress-on] mesh: %d v %d f sha256 %s" % [nv, nf, data.mesh.sha256])
 		_goto("DONE", "%s | %d v %d f, %d components, %d boundary loops, %d rims" % [note, nv, nf, comps, loops.size(), rims.size()])
 		return
 	# A skirt is one closed shell, double-sided in its geometry: one component, no boundary

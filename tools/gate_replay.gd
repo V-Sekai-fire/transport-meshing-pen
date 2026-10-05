@@ -48,6 +48,11 @@ var _plan_path := ""
 var _calib_frames := 0
 var _strokes_file := ""
 var _frame_cam: Camera3D = null
+# Frame lengths while the replay runs: < 7 ms (one 144 Hz frame), 7-17 ms, > 17 ms.
+var _last_frame_us := 0
+var _frame_max_ms := 0.0
+var _frame_hist := [0, 0, 0]
+var _frame_slow: Array = []
 var _cued := false
 
 func _say(s: String) -> void:
@@ -90,6 +95,14 @@ func _initialize() -> void:
 
 func _process(_dt: float) -> bool:
 	_frames += 1
+	var now := Time.get_ticks_usec()
+	if _phase == "replay_run" and _last_frame_us > 0:
+		var ms := (now - _last_frame_us) / 1000.0
+		_frame_max_ms = maxf(_frame_max_ms, ms)
+		_frame_hist[0 if ms < 7.0 else (1 if ms <= 17.0 else 2)] += 1
+		if ms > 17.0:
+			_frame_slow.append("%s %.0f ms" % [_main.pipeline.state, ms])
+	_last_frame_us = now
 	_follow_body()
 	if not _cued and _main != null and _main.get("pipeline") != null and _main.pipeline.data.get("pen_ends", []).size() > 0:
 		_cued = true
@@ -114,6 +127,8 @@ func _process(_dt: float) -> bool:
 			# --paced feeds them frame by frame, for a recording.
 			var o := {"strokes_from": _strokes_file, "allow_fixture": "infer,rig", "stop_after": _stop_after(),
 					"pen_instant": _arg("paced") == ""}
+			if _arg("mesh_workers") != "":
+				o["mesh_workers"] = int(_arg("mesh_workers"))
 			# The layer's own replay settings, then any given on the command line.
 			var meta: Dictionary = StrokesUsd.from_file(_main.usd, _strokes_file).get("meta", {})
 			for k in ["crossings", "body_snap"]:
@@ -333,6 +348,8 @@ func _finish(verdict: String) -> void:
 		_say("progress: %d strokes committed; last: %s" % [pe.size(), str(pe[-1]).left(200) if not pe.is_empty() else "-"])
 	if _arg("save_strokes") != "" and _main != null:
 		_say("save_strokes: " + str(_main.dress_on_save_strokes(_arg("save_strokes"))))
+	_say("frame gaps (wall clock, replay): max %.1f ms; <7 ms %d, 7-17 ms %d, >17 ms %d; slow: %s" % [_frame_max_ms, _frame_hist[0], _frame_hist[1],
+			_frame_hist[2], ", ".join(_frame_slow.slice(0, 12))])
 	_say("RESULT: " + verdict)
 	_phase = "done"
 	if _out != null:
