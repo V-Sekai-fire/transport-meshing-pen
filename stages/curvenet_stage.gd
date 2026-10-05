@@ -58,6 +58,10 @@ func pen_end_with_crossings(id: int, crossings: PackedFloat32Array) -> String:
 func session_replay(json: String) -> String:
 	return str(call_now("session_replay", [json]))
 
+# Per committed stroke or tap of a CASSIE session: "state\tcycle;cycle", each cycle its sorted stroke ids.
+func session_events(json: String) -> String:
+	return str(call_now("session_events", [json]))
+
 func patches() -> int:
 	var r = call_now("patch_count")
 	return int(r) if typeof(r) == TYPE_INT or typeof(r) == TYPE_FLOAT else -1
