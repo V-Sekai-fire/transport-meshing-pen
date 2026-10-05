@@ -243,12 +243,18 @@ def main(argv):
     ap.add_argument("out", nargs="?")
     ap.add_argument("--source-rev", default="")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--unblind", action="store_true", help="convert a withheld test-split sketch anyway")
     a = ap.parse_args(argv)
     if a.self_test:
         sys.exit(1 if self_test() else 0)
     from blake3 import blake3
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import curves_usd as cu
+    from cassie_split import test_split_of
+    if not os.path.exists(cu.SPLITS):
+        sys.exit("no %s: the split decides whether %s is withheld" % (cu.SPLITS, a.raw))
+    if test_split_of(cu.SPLITS, a.raw) == "test" and not a.unblind:
+        sys.exit("%s is in the withheld test split (%s); pass --unblind to convert it" % (a.raw, cu.SPLITS))
     data = open(a.raw, "rb").read()
     session = json.loads(data)
     strokes, names, joins, drawn, deleted = final_sketch(session)
