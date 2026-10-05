@@ -25,7 +25,7 @@ const PANEL := Color(0.05, 0.05, 0.05)
 var _args := {}
 var _out: FileAccess
 var _t0 := 0
-var _wall_s := 300.0
+var _wall_s := 60.0
 var _hold_s := 0.0
 var _main: Node = null
 var _phase := "boot"
@@ -66,7 +66,7 @@ func _initialize() -> void:
 		if a.begins_with("--"):
 			var kv := a.substr(2).split("=", true, 1)
 			_args[kv[0]] = kv[1] if kv.size() > 1 else "1"
-	_wall_s = float(_arg("wallclock", "300"))
+	_wall_s = float(_arg("wallclock", "60"))
 	_hold_s = float(_arg("hold", "0"))
 	var out := _arg("out", OS.get_user_data_dir().path_join("xr_scripted.txt"))
 	DirAccess.make_dir_recursive_absolute(out.get_base_dir())
