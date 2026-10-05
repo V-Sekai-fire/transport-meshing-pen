@@ -50,8 +50,9 @@ mesh_lod/lod_change/threshold_pixels=0.2
 
 [sandbox]
 
-; As interactor-dress-on's project.godot: no Docker toolchain on a guest fault,
-; native translation off until bintr libraries ship.
+; As interactor-dress-on's project.godot: no Docker toolchain on a guest fault.
+; Native translation is turned on per process by stages/sandbox_util.gd where
+; bintr/ holds a library for this platform (tools/build.exs makes them).
 toolchain/docker_enabled=false
 binary_translation/enabled=false
 

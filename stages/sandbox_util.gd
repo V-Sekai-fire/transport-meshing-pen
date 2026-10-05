@@ -21,21 +21,27 @@ const HEAP_CEILING_MB := 5112
 # default. extra: other Sandbox properties set before program= (for example
 # allocations_max). required: guest functions the stage needs; one missing
 # yields a null sandbox and a reason naming it (an older ELF of that name).
-# Native translation: the addon loads res://bintr/bintr-<HASH>.so for a
-# program whose hash it matches, when sandbox/binary_translation/enabled is
-# on. The setting stays off in project.godot (a Windows addon build
-# segfaulted with it on and no library present, 2026-09-23); it is turned on
-# here, per process, only where a translation is shipped, on Linux, where
-# the org's addon build with the emit switch (tools/godot-sandbox/) was
-# gated. tools/build.exs bakes the libraries; gates call this too.
+# Native translation: the addon loads res://bintr/bintr-<HASH>.<so|dll|dylib>
+# for a program whose hash it matches, when sandbox/binary_translation/enabled
+# is on. It is turned on here wherever a library for this platform is shipped;
+# tools/build.exs bakes them, tools/probe_bintr.gd gates them.
+const BINTR_DIR := "res://bintr"
+
+static func native_translation_suffix() -> String:
+	match OS.get_name():
+		"Linux": return ".so"
+		"Windows": return ".dll"
+		"macOS": return ".dylib"
+	return ""
+
 static func enable_native_translation() -> bool:
-	if OS.get_name() != "Linux":
-		return false
-	var dir := DirAccess.open("res://bintr")
-	if dir == null:
+	var suffix := native_translation_suffix()
+	var dir := DirAccess.open(BINTR_DIR)
+	if suffix == "" or dir == null:
 		return false
 	for f in dir.get_files():
-		if f.begins_with("bintr-") and f.ends_with(".so"):
+		if f.begins_with("bintr-") and f.ends_with(suffix):
+			ProjectSettings.set_setting("sandbox/binary_translation/cache_dir", BINTR_DIR + "/")
 			ProjectSettings.set_setting("sandbox/binary_translation/enabled", true)
 			return true
 	return false

@@ -46,10 +46,31 @@ references:
       ubuntu-22.04, macos universal. tools/vendor_addon.sh checks each file
       against the release's SHA256SUMS before vendoring it. sha256:
       libgodot_riscv.windows.template_release.double.x86_64.dll
-      d8c043e51afa53bd3ac779491bd769d46d4d294e13772eb52a06b0fbc9453520;
+      d8c043e51afa53bd3ac779491bd769d46d4d294e13772eb52a06b0fbc9453520
+      (replaced on 2026-10-04, below);
       libgodot_riscv.linux.template_release.double.x86_64.so
       56fda131e858c87bcf970316d4a0d2c36665bb2f6fb223dc1ebe821199dfea4b;
       libgodot_riscv.macos.template_release.double.universal
       e2464e813b1e347040b45f5d6c6a39ce099d5775f9958b6214c418b115bf0822, with
       its Resources/Info.plist
       2e62373a2fed03fcc4d6df9c8edde42533f9b726af8d1690d3ea32701b8097e4.
+  - type: software
+    title: godot-sandbox at double precision, Windows x86_64 with native translation
+    authors:
+      - name: Alf-André Walla (fwsGonzo)
+      - name: V-Sekai-fire
+    repository-code: https://github.com/V-Sekai-fire/godot-sandbox
+    commit: 3358d218a56a6e50eb1c2af47245fc49a80da396
+    license: BSD-3-Clause
+    notes: >-
+      Branch feat/bintr-emit (main c7db89a plus one commit: libriscv from the
+      V-Sekai-fire fork at 21a2765, whose mapping bound lets usd.elf's
+      translation load, and a <cstdlib> force-include godot-cpp needs under
+      llvm-mingw). Built on the Windows desk on 2026-10-04 with llvm-mingw
+      20260922 (ucrt, clang 23.1.2) and SCons: platform=windows arch=x86_64
+      target=template_release precision=double use_mingw=yes use_llvm=yes, no
+      JIT and no TCC. sha256:
+      libgodot_riscv.windows.template_release.double.x86_64.dll
+      939b694cf5bec117b8de15a008d81d8e149b14105ccb2121531d5aa28abb7ff2. The
+      translations in bintr/ are made against this build (its Machine layout
+      enters each hash) by tools/build.exs and are not tracked.

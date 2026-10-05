@@ -3,8 +3,9 @@
 # It checks the tools, gets the riscv64 sysroot, cross-builds the rung's
 # guest ELFs from the goal manifest's sibling checkouts into this project's
 # root (build.sh), builds and runs the host harnesses (the ggml-rd kernel L2,
-# the G3.graph oracle), and, when Godot is on the PATH, imports the project
-# and runs the headless gates. Every step prints what it runs; the first
+# the G3.graph oracle), and, when Godot is on the PATH, imports the project,
+# translates every shipped ELF to a native library in bintr/ (RFD 2293) and
+# runs the headless gates. Every step prints what it runs; the first
 # failure stops the build with a non-zero exit. Plain Elixir, no Mix, no
 # dependencies: what erlef/setup-beam gives a GitHub runner and `apt install
 # elixir` a desk.
@@ -12,12 +13,14 @@
 #   --targets=a,b     the ELF targets to build (default: all)
 #   --no-elfs         skip the cross-build (use the committed ELFs)
 #   --no-host         skip the host harnesses
-#   --gates=a,b       headless gates to run: load,crossings (default: load)
+#   --gates=a,b       headless gates to run: load,bintr,crossings (default: load,bintr)
+#   --no-bintr        skip the native translations (the bintr gate then fails)
 #   --sysroot=<dir>   the riscv64 sysroot (else $RISCV64_SYSROOT, else fetched)
 #   --jobs=N          build parallelism (default: the machine's cores)
 #
 # Environment it honours: WEFT_ROOT (the manifest checkout, default ../..),
-# RISCV64_SYSROOT, BUILD_DIR (default build/rv64), SLANGC, SPIRV_VAL.
+# RISCV64_SYSROOT, BUILD_DIR (default build/rv64), SLANGC, SPIRV_VAL, BINTR_CC
+# (the translation compiler; default x86_64-w64-mingw32-clang on Windows, else clang).
 defmodule Build do
   @root Path.expand("..", __DIR__)
   # The stage code is in sibling checkouts of the goal manifest (contract-manifest-taskweft).
@@ -36,6 +39,7 @@ defmodule Build do
     if opts.host, do: host(opts)
     if System.find_executable("godot") do
       import_project()
+      if opts.bintr, do: translations(opts)
       gates(opts)
     else
       say("godot: not on PATH; the import, the translations and the gates are skipped")
@@ -48,14 +52,15 @@ defmodule Build do
   defp parse(argv) do
     {kv, _, _} =
       OptionParser.parse(argv,
-        switches: [targets: :string, no_elfs: :boolean, no_host: :boolean,
+        switches: [targets: :string, no_elfs: :boolean, no_host: :boolean, no_bintr: :boolean,
                    gates: :string, sysroot: :string, jobs: :integer])
     targets = if kv[:targets], do: String.split(kv[:targets], ","), else: @elfs
     %{
       targets: targets,
       elfs: !kv[:no_elfs],
       host: !kv[:no_host],
-      gates: String.split(kv[:gates] || "load", ",", trim: true),
+      bintr: !kv[:no_bintr],
+      gates: String.split(kv[:gates] || "load,bintr", ",", trim: true),
       sysroot: kv[:sysroot] || System.get_env("RISCV64_SYSROOT"),
       jobs: kv[:jobs] || System.schedulers_online()
     }
@@ -122,11 +127,45 @@ defmodule Build do
     run("godot", ~w(--path #{@root} --headless --xr-mode off --import), [], allow_fail: true)
   end
 
+  # Each shipped ELF's translation: the addon writes its C99 under the stage's
+  # own Sandbox settings (they enter the hash), and one library per hash lands
+  # in bintr/ with this platform's suffix. A library whose hash is no longer
+  # emitted is removed, so a rebuilt ELF never meets a stale translation.
+  defp translations(opts) do
+    {suffix, cc, flags} =
+      case :os.type() do
+        {:win32, _} -> {".dll", System.get_env("BINTR_CC") || "x86_64-w64-mingw32-clang", []}
+        {:unix, :darwin} -> {".dylib", System.get_env("BINTR_CC") || "clang", ~w(-dynamiclib)}
+        _ -> {".so", System.get_env("BINTR_CC") || "clang", ~w(-fPIC)}
+      end
+    need(cc)
+    src = Path.join([@root, "build", "bintr-c"])
+    out = Path.join(@root, "bintr")
+    File.rm_rf!(src)
+    File.mkdir_p!(src)
+    File.mkdir_p!(out)
+    run("godot", ~w(--path #{@root} --headless --xr-mode off --script tools/probe_bintr.gd), [{"GODOT_SANDBOX_BINTR_EMIT", src}], allow_fail: true)
+    hashes = for f <- File.ls!(src), String.ends_with?(f, ".c"), do: Path.rootname(f)
+    if hashes == [], do: fail("the addon wrote no translations (an addon without the emit switch?)")
+    for f <- File.ls!(out), String.ends_with?(f, suffix), Path.rootname(f) not in hashes, do: File.rm!(Path.join(out, f))
+    hashes
+    |> Enum.reject(&File.exists?(Path.join(out, &1 <> suffix)))
+    |> Task.async_stream(fn h ->
+      args = ~w(-O2 -s -std=c99 -shared -x c -fexceptions -fvisibility=hidden -fomit-frame-pointer) ++ flags ++
+               [Path.join(src, h <> ".c"), "-o", Path.join(out, h <> suffix)]
+      {o, rc} = System.cmd(cc, args, stderr_to_stdout: true)
+      {h, rc, o}
+    end, max_concurrency: opts.jobs, timeout: :infinity)
+    |> Enum.each(fn {:ok, {h, rc, o}} -> if rc != 0, do: fail("#{cc} #{h}.c exited #{rc}: #{o}"), else: say("bintr: #{h}#{suffix}") end)
+    say("bintr: #{length(hashes)} translations in #{out}")
+  end
+
   defp gates(opts) do
     for g <- opts.gates do
       script =
         case g do
           "load" -> "tools/probe_load.gd"
+          "bintr" -> "tools/probe_bintr.gd"
           "crossings" -> "tests/e2e_crossings.gd"
           other -> fail("unknown gate #{other}")
         end
