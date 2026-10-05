@@ -11,7 +11,8 @@
 #
 # --strokes replays saved strokes with no XR and checks them against the
 # layer's expected counts; --control=drop_seam drops seam_back and must FAIL
-# at MESH.
+# at MESH. A layer carrying a CASSIE "session" (dress) passes only when
+# curvenet's graph port replays it to every one of its "expected_cycles".
 #
 # The pipeline runs with pen = "xr" and stops after MESH, so every stroke comes
 # from xr-grid's SketchTool on the right controller: OXRSys tracking packet ->
@@ -46,9 +47,18 @@ var _strokes: Array = []
 var _plan_path := ""
 var _calib_frames := 0
 var _strokes_file := ""
+var _frame_cam: Camera3D = null
+# Frame lengths while the replay runs: < 7 ms (one 144 Hz frame), 7-17 ms, > 17 ms.
+var _last_frame_us := 0
+var _frame_max_ms := 0.0
+var _frame_hist := [0, 0, 0]
+var _frame_slow: Array = []
+var _cued := false
+var _frame_ms := PackedInt32Array([0, 0, 0])
+var _frame_max := 0.0
 
 func _say(s: String) -> void:
-	print(s)
+	print("[%5.1fs] %s" % [Time.get_ticks_msec() / 1000.0, s])
 	if _out != null:
 		_out.store_line(s)
 		_out.flush()
@@ -62,7 +72,7 @@ func _initialize() -> void:
 		if a.begins_with("--"):
 			var kv := a.substr(2).split("=", true, 1)
 			_args[kv[0]] = kv[1] if kv.size() > 1 else "1"
-	_wall_s = float(_arg("wallclock", "600"))
+	_wall_s = float(_arg("wallclock", "60"))
 	_plan_path = _arg("plan", OS.get_user_data_dir().path_join("replay_plan.json"))
 	var out := _arg("out", OS.get_user_data_dir().path_join("replay_results.txt"))
 	DirAccess.make_dir_recursive_absolute(out.get_base_dir())
@@ -75,12 +85,34 @@ func _initialize() -> void:
 		_finish("FAIL (cannot load %s)" % SCENE)
 		return
 	_main = ps.instantiate()
+	# The station takes ~47 s to set up before the first frame and no replay needs it.
+	if _arg("station") == "":
+		var station: Node = _main.get_node_or_null("World/Station")
+		if station != null:
+			station.get_parent().remove_child(station)
+			station.free()
 	root.add_child(_main)
 	_strokes_file = _arg("strokes")
 	_phase = "replay_wait" if _strokes_file != "" else "wait"
 
 func _process(_dt: float) -> bool:
 	_frames += 1
+	if _frames > 2:
+		var ms := _dt * 1000.0
+		_frame_max = maxf(_frame_max, ms)
+		_frame_ms[0 if ms < 7.0 else (1 if ms < 17.0 else 2)] += 1
+	var now := Time.get_ticks_usec()
+	if _phase == "replay_run" and _last_frame_us > 0:
+		var ms := (now - _last_frame_us) / 1000.0
+		_frame_max_ms = maxf(_frame_max_ms, ms)
+		_frame_hist[0 if ms < 7.0 else (1 if ms <= 17.0 else 2)] += 1
+		if ms > 17.0:
+			_frame_slow.append("%s %.0f ms" % [_main.pipeline.state, ms])
+	_last_frame_us = now
+	_follow_body()
+	if not _cued and _main != null and _main.get("pipeline") != null and _main.pipeline.data.get("pen_ends", []).size() > 0:
+		_cued = true
+		_say("cue: first stroke committed")
 	if _phase == "done":
 		return false
 	if (Time.get_ticks_msec() - _t0) / 1000.0 > _wall_s:
@@ -89,6 +121,8 @@ func _process(_dt: float) -> bool:
 		return false
 	match _phase:
 		"replay_wait":
+			if _frames == 1:
+				_say("first frame")
 			# Saved-stroke replay: no XR, no OXRSys hand. The pipeline reads the
 			# strokes straight from the .usda (strokes_from) and feeds curvenet,
 			# so the run is deterministic and needs no simulator.
@@ -96,7 +130,11 @@ func _process(_dt: float) -> bool:
 				return false
 			_main.pipeline.state_changed.connect(func(st: String, _rec: Dictionary): _say("STATE " + st))
 			# Every stroke in its saved order, all in one frame: sequenced, not paced.
-			var o := {"strokes_from": _strokes_file, "allow_fixture": "infer,rig", "stop_after": _stop_after(), "pen_instant": true}
+			# --paced feeds them frame by frame, for a recording.
+			var o := {"strokes_from": _strokes_file, "allow_fixture": "infer,rig", "stop_after": _stop_after(),
+					"pen_instant": _arg("paced") == ""}
+			if _arg("mesh_workers") != "":
+				o["mesh_workers"] = int(_arg("mesh_workers"))
 			# The layer's own replay settings, then any given on the command line.
 			var meta: Dictionary = StrokesUsd.from_file(_main.usd, _strokes_file).get("meta", {})
 			for k in ["crossings", "body_snap"]:
@@ -211,14 +249,63 @@ func _evaluate_file() -> void:
 			best = str(ends[i])
 	_say("pen_ends: %d, first not ok at %d (%s); last ok: %s" % [ends.size(), first_bad,
 			str(ends[first_bad]).left(160) if first_bad >= 0 else "-", best.left(200)])
+	var session := _session_check(p, sf.get("meta", {}))
 	if p.state != "DONE":
 		_finish("FAIL (%s)" % p.status())
+		return
+	if not session.is_empty():
+		_finish("PASS" if session.ok else "FAIL (%s)" % session.why)
 		return
 	if exp.is_empty():
 		_finish("FAIL (%s has no readable expected in its customLayerData)" % _strokes_file.get_file())
 		return
 	var ok: bool = strokes == planned and cycles == int(exp.cycles) and openings == int(exp.openings)
 	_finish("PASS" if ok else "FAIL (counts differ from expected)")
+
+# A layer with a "session" replays it through curvenet's CASSIE graph port and
+# matches the port's cycles, as sorted stroke-id lists, against "expected_cycles".
+# {} when the layer has no session.
+func _session_check(p, meta: Dictionary) -> Dictionary:
+	if not meta.has("session"):
+		return {}
+	var expected = JSON.parse_string(str(meta.get("expected_cycles", "")))
+	if typeof(expected) != TYPE_ARRAY:
+		_say("session: no readable expected_cycles")
+		return {"ok": false, "why": "session without expected_cycles"}
+	# The pipeline's own replay of the session (AUTHOR, crossings "recorded"); it runs once.
+	var port_run: Dictionary = p.data.get("port", {})
+	if not port_run.has("replay"):
+		_say("session: the pipeline did not replay the session")
+		return {"ok": false, "why": "no session replay from the pipeline"}
+	var r: String = port_run.replay
+	var ms := int(port_run.session_ms)
+	var lines := r.strip_edges().split("\n")
+	if lines.is_empty() or not lines[0].begins_with("ok "):
+		_say("session: replay failed in %d ms: %s" % [ms, r.left(200)])
+		return {"ok": false, "why": "session replay failed"}
+	var port := {}
+	for i in range(1, lines.size()):
+		port[lines[i].split(" |")[0].strip_edges()] = true
+	var want := {}
+	for c in expected:
+		want[" ".join(Array(c).map(func(v): return str(int(v))))] = true
+	var exact := 0
+	for k in want:
+		if port.has(k):
+			exact += 1
+	var expected_only := want.size() - exact
+	var port_only := port.size() - exact
+	_say("session: %s (%d ms)" % [lines[0], ms])
+	_say("session: cycles %d, exact matches %d of %d, expected-only %d, port-only %d" % [port.size(), exact,
+			want.size(), expected_only, port_only])
+	for k in want:
+		if not port.has(k):
+			_say("session: expected-only " + k)
+	for k in port:
+		if not want.has(k):
+			_say("session: port-only " + k)
+	var ok: bool = exact == want.size() and want.size() == expected.size()
+	return {"ok": ok, "why": "session cycles: %d of %d expected matched" % [exact, want.size()]}
 
 # What MESH measured of the garment shell.
 static func _mesh_line(p) -> String:
@@ -242,10 +329,40 @@ static func _expected(meta: Dictionary) -> Dictionary:
 		return {}
 	return e
 
+# --frame: a camera on the drawn body from the front quarter, for a recording.
+func _follow_body() -> void:
+	if _arg("frame") == "" or _main == null:
+		return
+	var body := _main.get_node_or_null("World/XROrigin3D/Canvas/Body") as Node3D
+	if body == null:
+		return
+	if _frame_cam == null:
+		_frame_cam = Camera3D.new()
+		_frame_cam.fov = 40.0
+		_main.get_node("World").add_child(_frame_cam)
+		_frame_cam.current = true
+	var at := body.global_position + Vector3(0, float(_arg("frame_up", "1.0")), 0)
+	var dist := float(_arg("frame_dist", "2.6"))
+	_frame_cam.global_position = at + Vector3(0.45, 0.15, 1.0).normalized() * dist
+	_frame_cam.look_at(at, Vector3.UP)
+
+
 func _finish(verdict: String) -> void:
+	if _main != null and _main.get("pipeline") != null:
+		var pl = _main.pipeline
+		var pe: Array = pl.data.get("pen_ends", [])
+		_say("progress: %d strokes committed; last: %s" % [pe.size(), str(pe[-1]).left(200) if not pe.is_empty() else "-"])
+	if _arg("save_strokes") != "" and _main != null:
+		_say("save_strokes: " + str(_main.dress_on_save_strokes(_arg("save_strokes"))))
+	_say("frame gaps (wall clock, replay): max %.1f ms; <7 ms %d, 7-17 ms %d, >17 ms %d; slow: %s" % [_frame_max_ms, _frame_hist[0], _frame_hist[1],
+			_frame_hist[2], ", ".join(_frame_slow.slice(0, 12))])
+	_say("frames: longest %.1f ms; under 7 ms %d, 7-17 ms %d, over 17 ms %d" % [_frame_max, _frame_ms[0], _frame_ms[1], _frame_ms[2]])
 	_say("RESULT: " + verdict)
 	_phase = "done"
 	if _out != null:
 		_out.close()
 		_out = null
+	var hold := float(_arg("hold", "0"))
+	if hold > 0.0:
+		await create_timer(hold).timeout
 	quit(0 if verdict == "PASS" else 1)
