@@ -1,12 +1,13 @@
 """cassie_split -- train / validation / test splits of CASSIE's sketches, as a .usda.
 
   python tools/cassie_split.py <datasource-cassie>/data/raw_data <out.usda> [--rev=SHA]
+  python tools/cassie_split.py --self-test
 
 Splits the sketches of raw_data/, the app's own export and the one datasource-cassie folder
 not blocklisted; a split names sketches, so it holds for every folder's copy of a sketch.
 Split by group, never by file: a participant's six sketches (NN-a-b) are one group, and so
-are a named object's variants (architecture, architecture-2; large_hat with hat), so no
-person's or subject's strokes sit on both sides. Groups are shuffled with a fixed seed
+are a named object's variants (architecture, architecture-2), so no person's or subject's
+strokes sit on both sides. A file byte-identical to an earlier one (large_hat is hat) is dropped. Groups are shuffled with a fixed seed
 and cut 60/20/20. The sketches this work already opened (SEEN) stay in train: a set
 that has been looked at cannot be held out after the fact. Test is withheld: it is
 listed with each file's BLAKE3 so a later change to it is detectable, and
@@ -24,7 +25,6 @@ from pxr import Sdf, Usd, UsdGeom, Vt
 SEED = 20260925
 SEEN = {"dress", "hat", "flower", "vintage_car"}
 CUT = (0.6, 0.2)
-ALIAS = {"large_hat": "hat"}
 EXT = ".json"
 
 
@@ -33,7 +33,7 @@ def group_of(name):
     if m:
         return "participant-" + m.group(1)
     base = re.sub(r"-\d+$", "", name)
-    return ALIAS.get(base, base)
+    return base
 
 
 def split(files):
@@ -50,13 +50,42 @@ def split(files):
     return {k: sorted(f for g in v for f in groups[g]) for k, v in parts.items()}, groups
 
 
+def unique(raw_dir, files):
+    """The files in sorted order without byte-identical copies, and each copy -> the file it repeats."""
+    first, kept, dropped = {}, [], {}
+    for f in sorted(files):
+        h = blake3(open(os.path.join(raw_dir, f), "rb").read()).hexdigest()
+        if h in first:
+            dropped[f] = first[h]
+        else:
+            first[h] = f
+            kept.append(f)
+    return kept, dropped
+
+
+def self_test():
+    import tempfile
+    d = tempfile.mkdtemp()
+    for name, body in (("hat.json", b"a"), ("large_hat.json", b"a"), ("shoe.json", b"b")):
+        open(os.path.join(d, name), "wb").write(body)
+    checks = [("an identical copy is dropped", unique(d, os.listdir(d)) == (["hat.json", "shoe.json"], {"large_hat.json": "hat.json"})),
+              ("different files are kept", unique(d, ["hat.json", "shoe.json"])[1] == {})]
+    for name, ok in checks:
+        print("%s %s" % ("PASS" if ok else "FAIL", name))
+    return 0 if all(ok for _, ok in checks) else 1
+
+
 def main(argv):
+    if argv == ["--self-test"]:
+        return self_test()
     ap = argparse.ArgumentParser()
     ap.add_argument("raw_dir")
     ap.add_argument("out")
     ap.add_argument("--rev", default="")
     o = ap.parse_args(argv)
-    files = [f for f in os.listdir(o.raw_dir) if f.endswith(EXT)]
+    files, dropped = unique(o.raw_dir, [f for f in os.listdir(o.raw_dir) if f.endswith(EXT)])
+    for f, orig in sorted(dropped.items()):
+        print("dropped %s: byte-identical to %s" % (f, orig))
     parts, groups = split(files)
     stage = Usd.Stage.CreateInMemory()
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.y)
@@ -66,7 +95,8 @@ def main(argv):
     stage.GetRootLayer().customLayerData = {
         "dataset": "V-Sekai/datasource-cassie data/raw_data", "dataset_rev": o.rev, "seed": SEED,
         "rule": "group split (participant, or named subject), seeded shuffle, 60/20/20; seen sketches stay in train",
-        "seen": Vt.StringArray(sorted(SEEN)), "withheld": "test"}
+        "seen": Vt.StringArray(sorted(SEEN)), "withheld": "test",
+        "duplicates_dropped": Vt.StringArray(["%s=%s" % (f[:-len(EXT)], g[:-len(EXT)]) for f, g in sorted(dropped.items())])}
     for k, fs in parts.items():
         p = stage.DefinePrim("/Splits/" + k, "Scope")
         p.CreateAttribute("files", Sdf.ValueTypeNames.StringArray, custom=True).Set(Vt.StringArray(fs))

@@ -208,7 +208,8 @@ def session_subset(data):
                 "rejectedPositionConstraints": [{k: c[k] for k in keep} for c in s["rejectedPositionConstraints"]]}
                for s in raw["allSketchedStrokes"] if s["id"] in added]
     patches = [{k: p[k] for k in ("id", "foundByAlgo", "strokesID")} for p in raw["allCreatedPatches"]]
-    return raw_json({"systemStates": states, "allSketchedStrokes": strokes, "allCreatedPatches": patches})
+    return raw_json({k: raw[k] for k in ("sketchSystem", "sketchModel", "interactionMode")}
+                    | {"systemStates": states, "allSketchedStrokes": strokes, "allCreatedPatches": patches})
 
 
 def self_test():

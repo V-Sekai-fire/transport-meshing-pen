@@ -3,6 +3,7 @@
     customLayerData = {
         string dataset = "V-Sekai/datasource-cassie data/raw_data"
         string dataset_rev = "ed6870db441ece00701979db67190972deeff59b"
+        string[] duplicates_dropped = ["large_hat=hat"]
         string rule = "group split (participant, or named subject), seeded shuffle, 60/20/20; seen sketches stay in train"
         int seed = 20260925
         string[] seen = ["dress", "flower", "hat", "vintage_car"]
@@ -17,8 +18,8 @@ def Scope "Splits"
 {
     def Scope "train"
     {
-        custom string[] blake3 = ["298a22be0561", "f9da43badc10", "75fbc28cccb5", "93573922e422", "81aaea3a6f51", "4f62a9d14224", "e5640807cdc9", "27dfcb4a40ec", "96a8866da045", "8da1eebc8e06", "e7b17975a201", "5dc5a98e11fc", "eea46eadad25", "0fa73efda7b2", "7fd1e4c4bbd7", "036e548a30b8", "3e55d6253032", "bb519b6192bf", "e572ebe69bbf", "80944d25d826", "a21802695e22", "4c0ff111b84b", "a642e25a6db3", "9b548b94eabf", "2177b00d7d22", "a88dc9c3823b", "32dd754fa2dc", "642d5c7c3a94", "70609794d390", "b9da0a19ce7d", "66ba920e0fed", "ecfac45209bc", "700f74840c8f", "dd825363536d", "ec3c0e5d4dfe", "8f14edfdaf11", "28dbad22a382", "8f14edfdaf11", "f5779079b232", "51d546b4a214", "2ee05a67dfec", "f66cd46c8be6", "2519fbadd2ea"]
-        custom string[] files = ["03-0-1", "03-0-2", "03-1-1", "03-1-2", "03-2-1", "03-2-2", "05-0-1", "05-0-2", "05-1-1", "05-1-2", "05-2-1", "05-2-2", "08-0-1", "08-0-2", "08-1-1", "08-1-2", "08-2-1", "08-2-2", "11-0-1", "11-0-2", "11-1-1", "11-1-2", "11-2-1", "11-2-2", "12-0-1", "12-0-2", "12-1-1", "12-1-2", "12-2-1", "12-2-2", "architecture", "architecture-2", "computer-mouse", "dress", "flower", "hat", "hmd_sutherland", "large_hat", "monster_head", "sewing-machine", "shield", "vacuum", "vintage_car"]
+        custom string[] blake3 = ["298a22be0561", "f9da43badc10", "75fbc28cccb5", "93573922e422", "81aaea3a6f51", "4f62a9d14224", "e5640807cdc9", "27dfcb4a40ec", "96a8866da045", "8da1eebc8e06", "e7b17975a201", "5dc5a98e11fc", "eea46eadad25", "0fa73efda7b2", "7fd1e4c4bbd7", "036e548a30b8", "3e55d6253032", "bb519b6192bf", "e572ebe69bbf", "80944d25d826", "a21802695e22", "4c0ff111b84b", "a642e25a6db3", "9b548b94eabf", "2177b00d7d22", "a88dc9c3823b", "32dd754fa2dc", "642d5c7c3a94", "70609794d390", "b9da0a19ce7d", "66ba920e0fed", "ecfac45209bc", "700f74840c8f", "dd825363536d", "ec3c0e5d4dfe", "8f14edfdaf11", "28dbad22a382", "f5779079b232", "51d546b4a214", "2ee05a67dfec", "f66cd46c8be6", "2519fbadd2ea"]
+        custom string[] files = ["03-0-1", "03-0-2", "03-1-1", "03-1-2", "03-2-1", "03-2-2", "05-0-1", "05-0-2", "05-1-1", "05-1-2", "05-2-1", "05-2-2", "08-0-1", "08-0-2", "08-1-1", "08-1-2", "08-2-1", "08-2-2", "11-0-1", "11-0-2", "11-1-1", "11-1-2", "11-2-1", "11-2-2", "12-0-1", "12-0-2", "12-1-1", "12-1-2", "12-2-1", "12-2-2", "architecture", "architecture-2", "computer-mouse", "dress", "flower", "hat", "hmd_sutherland", "monster_head", "sewing-machine", "shield", "vacuum", "vintage_car"]
         custom int groups = 16
     }
 
