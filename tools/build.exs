@@ -14,7 +14,7 @@
 #   --targets=a,b     the ELF targets to build (default: all)
 #   --no-elfs         skip the cross-build (use the committed ELFs)
 #   --no-host         skip the host harnesses
-#   --gates=a,b       headless gates to run: load,bintr,crossings,cassie,witness,events,shapes (default: load,bintr)
+#   --gates=a,b       headless gates to run: load,bintr,crossings,cassie,witness,events,shapes,loops (default: load,bintr)
 #   --no-bintr        skip the native translations (the bintr gate then fails)
 #   --sysroot=<dir>   the riscv64 sysroot (else $RISCV64_SYSROOT, else fetched)
 #   --jobs=N          build parallelism (default: the machine's cores)
@@ -178,6 +178,7 @@ defmodule Build do
           "witness" -> "tests/witness_test.gd"
           "events" -> "tests/cassie_events.gd"
           "shapes" -> "tests/cassie_shapes.gd"
+          "loops" -> "tests/cassie_mesh_loops.gd"
           other -> fail("unknown gate #{other}")
         end
       run(godot(), ~w(--path #{@root} --headless --xr-mode off --script #{script}))
