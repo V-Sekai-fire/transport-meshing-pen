@@ -1,13 +1,17 @@
 """movie -- a Movie Maker recording onto the Desktop, named by the orbit-view standard.
 
-  python tools/movie.py <description> [--fps=30] [--godot=<exe>] -- <gate script> [gate args]
+  python tools/movie.py <description> [--fps=30] [--load=5] [--render=60] [--godot=<exe>] -- <gate script> [gate args]
   python tools/movie.py --self-test
+
+Godot is stopped, asked first and then killed, when the gate's "cue: loaded" line has not
+appeared --load seconds after launch, or the run has not ended --render seconds after it.
 """
 import os
 import re
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import date
 from pathlib import Path
 
@@ -23,6 +27,35 @@ def next_name(folder: Path, day: str, description: str) -> Path:
     return folder / f"{stem}{max(taken, default=0) + 1:04d}.avi"
 
 
+def stop(proc: subprocess.Popen) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+
+
+def watch(proc: subprocess.Popen, log: Path, load_s: float, render_s: float):
+    t0 = time.monotonic()
+    loaded = None
+    while proc.poll() is None:
+        now = time.monotonic()
+        if loaded is None and log.exists() and "cue: loaded" in log.read_text(encoding="utf-8", errors="replace"):
+            loaded = now
+            print(f"loaded in {now - t0:.1f} s")
+        if loaded is None and now - t0 > load_s:
+            stop(proc)
+            print(f"FAIL not loaded {load_s:g} s after launch")
+            return None
+        if loaded is not None and now - loaded > render_s:
+            stop(proc)
+            print(f"FAIL rendering passed {render_s:g} s after load")
+            return None
+        time.sleep(0.1)
+    return proc.returncode
+
+
 def self_test() -> int:
     fails = 0
     with tempfile.TemporaryDirectory() as t:
@@ -35,6 +68,21 @@ def self_test() -> int:
         if next_name(d, "20261004", "orbit").name != "20261004_meshing-pen_orbit_0008.avi":
             fails += 1
             print("FAIL an existing recording would be overwritten")
+    with tempfile.TemporaryDirectory() as t:
+        log = Path(t) / "gate.txt"
+        hang = [sys.executable, "-c", "import time; time.sleep(30)"]
+        if watch(subprocess.Popen(hang), log, 0.5, 60) is not None:
+            fails += 1
+            print("FAIL a run that never loads is not stopped")
+        cue = [sys.executable, "-c", f"import time; open(r'{log}','w').write('cue: loaded'); time.sleep(30)"]
+        if watch(subprocess.Popen(cue), log, 5, 0.5) is not None:
+            fails += 1
+            print("FAIL a render past its cap is not stopped")
+        log.unlink(missing_ok=True)
+        quick = [sys.executable, "-c", f"open(r'{log}','w').write('cue: loaded')"]
+        if watch(subprocess.Popen(quick), log, 5, 5) != 0:
+            fails += 1
+            print("FAIL a run within both caps is stopped")
     print("ok" if fails == 0 else f"{fails} control(s) failed")
     return 1 if fails else 0
 
@@ -61,7 +109,13 @@ def main(argv: list) -> int:
            "--write-movie", str(raw), "--fixed-fps", opts.get("fps", "30"),
            "--script", gate[0], "--", *gate[1:]]
     print(" ".join(cmd))
-    code = subprocess.run(cmd).returncode
+    log = raw.with_suffix(".gate.txt")
+    cmd += [f"--out={log}"]
+    code = watch(subprocess.Popen(cmd), log, float(opts.get("load", "5")), float(opts.get("render", "60")))
+    log.unlink(missing_ok=True)
+    if code is None:
+        raw.unlink(missing_ok=True)
+        return 1
     if not raw.exists() or raw.stat().st_size == 0:
         print(f"FAIL no recording at {raw}")
         return 1

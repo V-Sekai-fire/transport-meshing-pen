@@ -124,9 +124,6 @@ func _process(dt: float) -> bool:
 	if (Time.get_ticks_msec() - _t0) / 1000.0 > _wall_s:
 		_finish("FAIL (wall clock %.0f s in %s: %s)" % [_wall_s, _phase, _main.dress_on_status() if _main != null else "-"])
 		return false
-	if _movie() and _render_t0 > 0 and (Time.get_ticks_msec() - _render_t0) / 1000.0 > float(_arg("render_timeout", "60")):
-		_finish("FAIL (rendering passed %s s after load, in %s)" % [_arg("render_timeout", "60"), _phase])
-		return false
 	if not _caps.is_empty():
 		_captions()
 	if _arg("orbit") != "":
@@ -145,9 +142,6 @@ func _process(dt: float) -> bool:
 			if _render_t0 == 0:
 				_render_t0 = Time.get_ticks_msec()
 				_say("cue: loaded")
-				if _movie() and (_render_t0 - _t0) / 1000.0 > float(_arg("load_timeout", "5")):
-					_finish("FAIL (loading took %.1f s, over %s s)" % [(_render_t0 - _t0) / 1000.0, _arg("load_timeout", "5")])
-					return false
 			if _movie_t() < _delay_s:
 				return false
 			var w = _main.get_node_or_null("World")
