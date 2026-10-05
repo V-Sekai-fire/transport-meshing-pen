@@ -16,7 +16,7 @@
 #
 # pen = "scripted": the pipeline's strokes (xr/pen_source_scripted.gd, handed
 # over by its strokes_ready signal) are replayed one stroke per frame through
-# the same pen_event calls, and drawn into Body/strokes with SimpleSketch so
+# the same pen_event calls, and drawn into Body/strokes as Line3D strokes so
 # the flat and VR screenshots show them. No controller is read.
 extends Node
 
@@ -51,11 +51,7 @@ func attach(p) -> void:
 	statue = get_node_or_null(statue_path) if not statue_path.is_empty() else null
 	var strokes_node = body.get_node_or_null("strokes") if body != null else null
 	if strokes_node != null:
-		# SimpleSketch (class_name in the addon), made from its path.
-		var s = load("res://addons/procedural_3d_grid/core/simple_sketcher/simple_sketch.gd")
-		if s != null:
-			_sketch = s.new()
-			_sketch.target_mesh = strokes_node.mesh
+		_sketch = load("res://xr/line3d_sketch.gd").new(strokes_node)
 
 func _on_strokes(strokes: Array) -> void:
 	if pipeline == null or pipeline.opts.get("pen", "scripted") != "scripted":

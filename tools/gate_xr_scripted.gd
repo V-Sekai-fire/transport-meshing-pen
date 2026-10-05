@@ -4,7 +4,8 @@
 #   godot --path . --xr-mode on --script tools/gate_xr_scripted.gd -- --expect=xr [--hold=60]
 #   godot --path . --xr-mode off --script tools/gate_xr_scripted.gd -- --expect=flat
 #   godot --path . --xr-mode on --script tools/gate_xr_scripted.gd -- --pen=xr --wallclock=1800
-#   godot --path . --xr-mode off --write-movie s.cfhd --fixed-fps 30 --script tools/gate_xr_scripted.gd -- --expect=flat --clip=40 --hide=shorts/pen-skirt.hide
+#   python tools/movie.py pen-skirt -- tools/gate_xr_scripted.gd --expect=flat --clip=40 --hide=shorts/pen-skirt.hide
+#   python tools/movie.py line3d-orbit -- tools/gate_xr_scripted.gd --expect=flat --orbit=8 --orbit_hold=3 --pace=0.5 --clip=24
 #
 # PASS: the view is what --expect says (XR needs an OpenXR session), and the
 # pen made 6 strokes that close 2 cycles with 2 openings into a closed skirt shell.
@@ -38,6 +39,8 @@ var _fps := 0.0
 var _clip_s := 0.0
 var _clip_frames := 0
 var _delay_s := 0.0
+var _orbit_view := -1
+var _orbit_cams: Array = []
 var _caps: Array = []
 var _beat := -1
 var _cap_panel: PanelContainer = null
@@ -121,6 +124,8 @@ func _process(dt: float) -> bool:
 		return false
 	if not _caps.is_empty():
 		_captions()
+	if _arg("orbit") != "":
+		_orbit()
 	if _clip_frames > 0 and _frames >= _clip_frames:
 		if _phase != "hold":
 			_finish("FAIL (the %s s clip ended in %s, before the pen reached DONE: %s)" % [_arg("clip"), _phase, _main.dress_on_status()])
@@ -173,6 +178,27 @@ func _process(dt: float) -> bool:
 				_finish(_verdict)
 	return false
 
+
+func _orbit() -> void:
+	var w = _main.get_node_or_null("World")
+	var cam: Node3D = w.get_node_or_null("XROrigin3D/XRCamera3D") if w != null else null
+	var body: Node3D = w.get_node_or_null("XROrigin3D/Canvas/Body") if w != null else null
+	if cam == null or body == null:
+		return
+	var n := int(_arg("orbit"))
+	if _orbit_cams.is_empty():
+		_orbit_cams = load("res://tools/orbit_views.sgd")._hammersley("%d@0,0" % n)
+	var t := _movie_t() if _movie() else (Time.get_ticks_msec() - _t0) / 1000.0
+	var i := int(t / float(_arg("orbit_hold", "4"))) % n
+	if i != _orbit_view:
+		_orbit_view = i
+		_say("orbit view %d of %d: azimuth %.4f elevation %.4f" % [i, n, _orbit_cams[i][2], _orbit_cams[i][3]])
+	var az := deg_to_rad(_orbit_cams[i][2])
+	var el := deg_to_rad(_orbit_cams[i][3])
+	var target := body.global_position + Vector3(0, float(_arg("orbit_y", "1.1")), 0)
+	var d := float(_arg("orbit_dist", "2.0"))
+	var pos := target + Vector3(sin(az) * cos(el), sin(el), cos(az) * cos(el)) * d
+	cam.look_at_from_position(pos, target, Vector3.FORWARD if absf(el) > 1.4 else Vector3.UP)
 
 func _movie_t() -> float:
 	return (_frames - 1) / _fps if _fps > 0.0 else 0.0
@@ -337,7 +363,13 @@ func _evaluate() -> String:
 			str(m.get("vertices", -1)), str(m.get("triangles", -1)), str(m.get("loops", -1)), str(m.get("rims", -1)),
 			str(m.get("mesh_build", ""))])
 	_log_sandboxes(_main)
-	var strokes_ok: bool = int(c.get("strokes", -1)) == 6 or (_arg("pen", "scripted") == "xr" and int(c.get("strokes", -1)) > 0)
+	var drawn := 0
+	var sn: Node = _main.get_node_or_null("World/XROrigin3D/Canvas/Body/strokes")
+	for k in (sn.get_children() if sn != null else []):
+		if k is MeshInstance3D and k.mesh != null and k.mesh.get_surface_count() > 0:
+			drawn += 1
+	_say("drawn: %d Line3D strokes under Body/strokes" % drawn)
+	var strokes_ok: bool = (int(c.get("strokes", -1)) == 6 and drawn == 6) or (_arg("pen", "scripted") == "xr" and int(c.get("strokes", -1)) > 0 and drawn > 0)
 	var ok: bool = p.state == "DONE" and strokes_ok and int(c.get("cycles", -1)) == 2 \
 			and int(c.get("openings", -1)) == 2 and int(m.get("loops", -1)) == 0 and int(m.get("rims", -1)) == 2 \
 			and int(m.get("components", -1)) == 1
