@@ -1,6 +1,6 @@
 """movie -- a Movie Maker recording onto the Desktop, named by the orbit-view standard.
 
-  python tools/movie.py <description> [--fps=30] [--load=5] [--render=60] [--godot=<exe>] -- <gate script> [gate args]
+  python tools/movie.py <description> [--fps=30] [--load=4] [--render=60] [--godot=<exe>] -- <gate script> [gate args]
   python tools/movie.py --self-test
 
 Godot is stopped, asked first and then killed, when the gate's "cue: loaded" line has not
@@ -117,7 +117,7 @@ def main(argv: list) -> int:
     print(" ".join(cmd))
     log = Path(tempfile.gettempdir()) / (raw.stem + ".gate.txt")
     cmd += [f"--out={log}"]
-    code = watch(subprocess.Popen(cmd), log, float(opts.get("load", "5")), float(opts.get("render", "60")))
+    code = watch(subprocess.Popen(cmd), log, float(opts.get("load", "4")), float(opts.get("render", "60")))
     if code is None:
         for _ in range(50):
             try:
