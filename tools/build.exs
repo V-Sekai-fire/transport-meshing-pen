@@ -1,4 +1,5 @@
 # One step, the same on a desk and in CI: elixir tools/build.exs [options]
+# A desk's .env (see .env.example) sets its paths and, as BUILD_ARGS, the options a bare run uses.
 #
 # It checks the tools, gets the riscv64 sysroot, cross-builds the rung's
 # guest ELFs from the goal manifest's sibling checkouts into this project's
@@ -31,13 +32,17 @@ defmodule Build do
   @elfs ~w(dress_on curvenet probes ggml_test lasso)
 
   def main(argv) do
+    load_env(Path.join(@root, ".env"))
+    argv = if argv == [], do: OptionParser.split(System.get_env("BUILD_ARGS", "")), else: argv
     opts = parse(argv)
     say("checkout #{@root}")
     tools(opts)
-    sysroot = sysroot(opts)
-    if opts.elfs, do: elfs(opts, sysroot)
-    if opts.host, do: host(opts)
-    if System.find_executable("godot") do
+    if opts.elfs or opts.host do
+      sysroot = sysroot(opts)
+      if opts.elfs, do: elfs(opts, sysroot)
+      if opts.host, do: host(opts)
+    end
+    if System.find_executable(godot()) do
       import_project()
       if opts.bintr, do: translations(opts)
       gates(opts)
@@ -67,6 +72,8 @@ defmodule Build do
   end
 
   # --- steps ---------------------------------------------------------------------
+
+  defp tools(%{elfs: false, host: false}), do: say("tools: none needed without --elfs or --host")
 
   defp tools(opts) do
     for t <- ~w(cmake ninja clang++ ld.lld python3 git), do: need(t)
@@ -124,7 +131,7 @@ defmodule Build do
   end
 
   defp import_project do
-    run("godot", ~w(--path #{@root} --headless --xr-mode off --import), [], allow_fail: true)
+    run(godot(), ~w(--path #{@root} --headless --xr-mode off --import), [], allow_fail: true)
   end
 
   # Each shipped ELF's translation: the addon writes its C99 under the stage's
@@ -144,7 +151,7 @@ defmodule Build do
     File.rm_rf!(src)
     File.mkdir_p!(src)
     File.mkdir_p!(out)
-    run("godot", ~w(--path #{@root} --headless --xr-mode off --script tools/probe_bintr.gd), [{"GODOT_SANDBOX_BINTR_EMIT", src}], allow_fail: true)
+    run(godot(), ~w(--path #{@root} --headless --xr-mode off --script tools/probe_bintr.gd), [{"GODOT_SANDBOX_BINTR_EMIT", src}], allow_fail: true)
     hashes = for f <- File.ls!(src), String.ends_with?(f, ".c"), do: Path.rootname(f)
     if hashes == [], do: fail("the addon wrote no translations (an addon without the emit switch?)")
     for f <- File.ls!(out), String.ends_with?(f, suffix), Path.rootname(f) not in hashes, do: File.rm!(Path.join(out, f))
@@ -169,7 +176,7 @@ defmodule Build do
           "crossings" -> "tests/e2e_crossings.gd"
           other -> fail("unknown gate #{other}")
         end
-      run("godot", ~w(--path #{@root} --headless --xr-mode off --script #{script}))
+      run(godot(), ~w(--path #{@root} --headless --xr-mode off --script #{script}))
     end
   end
 
@@ -188,6 +195,22 @@ defmodule Build do
     {_, rc} = System.cmd(cmd, args, env: env, into: IO.stream(:stdio, :line), stderr_to_stdout: true, cd: @root)
     if rc != 0 and not Keyword.get(o, :allow_fail, false), do: fail("#{cmd} exited #{rc}")
     rc
+  end
+
+  defp godot, do: System.get_env("GODOT", "godot")
+
+  # KEY=VALUE lines; the environment wins, and PATH_PREPEND goes in front of PATH.
+  defp load_env(file) do
+    if File.exists?(file) do
+      for line <- File.read!(file) |> String.split("\n"),
+          line = String.trim(line),
+          line != "" and not String.starts_with?(line, "#"),
+          [k, v] <- [String.split(line, "=", parts: 2)],
+          System.get_env(k) == nil,
+          do: System.put_env(k, String.trim(v, "\""))
+
+      if pre = System.get_env("PATH_PREPEND"), do: System.put_env("PATH", pre <> ":" <> System.get_env("PATH"))
+    end
   end
 
   defp need(tool), do: System.find_executable(tool) || fail("#{tool} is not on PATH")

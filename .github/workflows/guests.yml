@@ -63,7 +63,7 @@ jobs:
             interactor-curvenet interactor-lasso interactor-usd-guest ggml
       - name: Build, harnesses and the load gate
         working-directory: weft/1-transport/meshing-pen
-        run: elixir tools/build.exs --gates=load ${{ matrix.args }}
+        run: elixir tools/build.exs --gates=load --no-bintr ${{ matrix.args }}
       - name: Keep the ELFs
         if: always()
         uses: actions/upload-artifact@v4
