@@ -28,11 +28,17 @@ def next_name(folder: Path, day: str, description: str) -> Path:
 
 
 def stop(proc: subprocess.Popen) -> None:
-    proc.terminate()
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/PID", str(proc.pid)], capture_output=True)
+    else:
+        proc.terminate()
     try:
         proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
+        else:
+            proc.kill()
         proc.wait()
 
 
@@ -109,13 +115,19 @@ def main(argv: list) -> int:
            "--write-movie", str(raw), "--fixed-fps", opts.get("fps", "30"),
            "--script", gate[0], "--", *gate[1:]]
     print(" ".join(cmd))
-    log = raw.with_suffix(".gate.txt")
+    log = Path(tempfile.gettempdir()) / (raw.stem + ".gate.txt")
     cmd += [f"--out={log}"]
     code = watch(subprocess.Popen(cmd), log, float(opts.get("load", "5")), float(opts.get("render", "60")))
-    log.unlink(missing_ok=True)
     if code is None:
-        raw.unlink(missing_ok=True)
+        for _ in range(50):
+            try:
+                raw.unlink(missing_ok=True)
+                break
+            except PermissionError:
+                time.sleep(0.1)
+        print(f"gate log: {log}")
         return 1
+    log.unlink(missing_ok=True)
     if not raw.exists() or raw.stat().st_size == 0:
         print(f"FAIL no recording at {raw}")
         return 1
