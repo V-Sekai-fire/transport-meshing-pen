@@ -41,6 +41,7 @@ var _clip_frames := 0
 var _delay_s := 0.0
 var _orbit_view := -1
 var _orbit_cams: Array = []
+var _orbit_cam: Camera3D = null
 var _caps: Array = []
 var _beat := -1
 var _cap_panel: PanelContainer = null
@@ -181,10 +182,14 @@ func _process(dt: float) -> bool:
 
 func _orbit() -> void:
 	var w = _main.get_node_or_null("World")
-	var cam: Node3D = w.get_node_or_null("XROrigin3D/XRCamera3D") if w != null else null
 	var body: Node3D = w.get_node_or_null("XROrigin3D/Canvas/Body") if w != null else null
-	if cam == null or body == null:
+	if body == null:
 		return
+	if _orbit_cam == null:
+		_orbit_cam = Camera3D.new()
+		root.add_child(_orbit_cam)
+	_orbit_cam.make_current()
+	var cam: Camera3D = _orbit_cam
 	var n := int(_arg("orbit"))
 	if _orbit_cams.is_empty():
 		_orbit_cams = load("res://tools/orbit_views.sgd")._hammersley("%d@0,0" % n)
