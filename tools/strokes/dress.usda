@@ -1,6 +1,9 @@
 #usda 1.0
 (
     customLayerData = {
+        double body_axis_z = -0.003
+        double body_clearance = 0.004
+        string body_fit = "mujoco"
         bool body_snap = 0
         string converter = "transport-meshing-pen tools/cassie_raw_usd.py"
         string crossings = "recorded"

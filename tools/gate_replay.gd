@@ -332,6 +332,8 @@ func _finish(verdict: String) -> void:
 			_say("probe: one find_cycles walk finds %s cycles in %d ms" % [str(c), (Time.get_ticks_usec() - t0) / 1000])
 			var srcs = pl.curvenet.call_now("cycle_sources")
 			_say("cycle_sources: " + ",".join(Array(srcs).map(func(v): return str(v))))
+	if _arg("save_strokes") != "" and _main != null:
+		_say("save_strokes: " + str(_main.dress_on_save_strokes(_arg("save_strokes"))))
 	_say("RESULT: " + verdict)
 	_phase = "done"
 	if _out != null:

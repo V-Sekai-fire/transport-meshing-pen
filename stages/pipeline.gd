@@ -320,6 +320,17 @@ func _author(first: bool) -> void:
 				if strokes.size() != saved.strokes.size() - 1:
 					_fail("drop_seam: %s has no stroke seam_back" % opts.strokes_from)
 					return
+			# A sketch not drawn on this body is fitted with the collision guest: only
+			# points inside the body move, out through its surface.
+			if str(saved.meta.get("body_fit", "")) == "mujoco" and mujoco != null:
+				var fit: Dictionary = mujoco.push_out(strokes, "res://fixtures/%s/avatar.obj" % opts.avatar, 0.0,
+						float(saved.meta.get("body_axis_z", 0.0)), float(saved.meta.get("body_clearance", 0.004)))
+				if fit.has("error"):
+					_fail("body_fit: " + str(fit.error))
+					return
+				strokes = fit.strokes
+				data.body_fit_moved = fit.moved
+				print("[dress-on] body_fit: %d stroke points moved out of the body" % fit.moved)
 			data.strokes_from = {"path": opts.strokes_from, "strokes": strokes.size(), "meta": saved.meta}
 			events = StrokesUsd.events(strokes)
 			strokes_ready.emit(strokes)
