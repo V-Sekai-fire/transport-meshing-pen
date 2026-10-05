@@ -268,7 +268,7 @@ func _session_check(p, meta: Dictionary) -> Dictionary:
 		return {"ok": false, "why": "session replay failed"}
 	var port := {}
 	for i in range(1, lines.size()):
-		port[lines[i].strip_edges()] = true
+		port[lines[i].split(" |")[0].strip_edges()] = true
 	var want := {}
 	for c in expected:
 		want[" ".join(Array(c).map(func(v): return str(int(v))))] = true
@@ -335,15 +335,6 @@ func _finish(verdict: String) -> void:
 		var pl = _main.pipeline
 		var pe: Array = pl.data.get("pen_ends", [])
 		_say("progress: %d strokes committed; last: %s" % [pe.size(), str(pe[-1]).left(200) if not pe.is_empty() else "-"])
-		if _arg("probe_cycles") != "" and pl.curvenet != null:
-			while pl.curvenet.busy():
-				OS.delay_msec(20)
-			pl.curvenet.poll()
-			var t0 := Time.get_ticks_usec()
-			var c = pl.curvenet.call_now("find_cycles_count")
-			_say("probe: one find_cycles walk finds %s cycles in %d ms" % [str(c), (Time.get_ticks_usec() - t0) / 1000])
-			var srcs = pl.curvenet.call_now("cycle_sources")
-			_say("cycle_sources: " + ",".join(Array(srcs).map(func(v): return str(v))))
 	if _arg("save_strokes") != "" and _main != null:
 		_say("save_strokes: " + str(_main.dress_on_save_strokes(_arg("save_strokes"))))
 	_say("RESULT: " + verdict)

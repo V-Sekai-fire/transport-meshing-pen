@@ -5,6 +5,7 @@
 # INFER   body mesh (infer.elf; today the opts.avatar fixture, FoxGirl or Maro)
 # RIG     15-joint skeleton (infer.elf's rig; today that fixture's own, via skeleton15)
 # AUTHOR  pen events -> curvenet pen_begin/point/end, then curvenet_build
+#         (recorded strokes: the graph port's cycles, cut from the fitted strokes, -> boundary_patches)
 # MESH    mesh_build on curvenet's worker thread -> garment shell + its rims
 #
 # A stage whose ELF is missing (or too old to have its API) FAILs the run as
@@ -34,8 +35,8 @@ const PEN_EVENTS_PER_FRAME := 64
 var infer = null
 var curvenet = null
 var mujoco = null
-const SOLVE_TIMEOUT_MS := 60000 # one stroke's commit; past this the run fails
-var _end_pending := -1
+const PORT_TIMEOUT_MS := 60000 # triangulating the port's cycles; past this the run fails
+const PORT_WELD_M := 0.003
 var usd = null # stages/usd_stage.gd: strokes_from and saving strokes
 
 var opts := {}
@@ -62,7 +63,7 @@ const DEFAULTS := {
 	"pen": "scripted",        # scripted | xr
 	"avatar": "foxgirl",      # the infer/rig fixture body under fixtures/: foxgirl | maro
 	"pen_instant": false,     # feed every pen event in order in one frame, not paced per frame
-	"crossings": "mujoco",    # "curvenet": curvenet finds each stroke's crossings; "recorded": the layer's junctions
+	"crossings": "mujoco",    # "recorded": CASSIE's graph port replays the layer's session; else curvenet's own solve
 	"body_snap": true,        # false: curvenet's snap_radius 0, for a sketch not authored on this body
 	"drop_seam": false,       # control: the back seam is not drawn, or seam_back is dropped from strokes_from
 	                          # -> FAILED(MESH)
@@ -104,7 +105,6 @@ func start(o: Dictionary = {}) -> String:
 	pen_finished = false
 	reason = ""
 	_stroke_ids = {}
-	_end_pending = -1
 	_run_t0 = Time.get_ticks_msec()
 	if infer != null:
 		infer.avatar = str(opts.avatar)
@@ -322,23 +322,126 @@ func _fit_in_drawing_order(strokes: Array, meta: Dictionary) -> Dictionary:
 	return {"strokes": out, "junctions": junctions, "moved": moved, "pinned": pinned}
 
 
+# Recorded strokes: CASSIE's graph port replays the layer's session; each live cycle's
+# boundary is cut from the fitted stroke polylines and triangulated on curvenet's worker.
+func _port_start() -> void:
+	var meta: Dictionary = data.get("strokes_from", {}).get("meta", {})
+	if not meta.has("session"):
+		_fail("crossings recorded: %s carries no session" % opts.strokes_from)
+		return
+	var t0 := Time.get_ticks_msec()
+	var r: String = curvenet.session_replay(str(meta.session))
+	var t1 := Time.get_ticks_msec()
+	var lines := r.strip_edges().split("\n")
+	if lines.is_empty() or not lines[0].begins_with("ok "):
+		_fail("session_replay: " + r.left(200))
+		return
+	var by_name := {}
+	for s in data.get("layer_strokes", []):
+		by_name[str(s.name)] = s.points
+	var edge := float(opts.mesh_edge) if float(opts.mesh_edge) > 0.0 else 0.02
+	var flat := PackedFloat32Array()
+	var counts := PackedInt32Array()
+	var missing := []
+	var gaps := []
+	for i in range(1, lines.size()):
+		var parts := lines[i].split(" |", true, 1)
+		var pts := PackedVector3Array()
+		for tok in (parts[1] if parts.size() > 1 else "").strip_edges().split(" ", false):
+			var f := tok.split(":")
+			var poly = _port_stroke(by_name, int(f[0]))
+			if poly == null:
+				missing.append(int(f[0]))
+				pts.clear()
+				break
+			_append_span(pts, poly, float(f[1]) * (poly.size() - 1), float(f[2]) * (poly.size() - 1), edge)
+		if pts.size() > 1 and pts[0].distance_to(pts[-1]) < 1e-6:
+			pts.remove_at(pts.size() - 1)
+		if pts.size() < 3:
+			continue
+		var gap := 0.0
+		for k in pts.size():
+			gap = maxf(gap, pts[k].distance_to(pts[(k + 1) % pts.size()]))
+		gaps.append(snappedf(gap * 1000.0, 0.1))
+		for q in pts:
+			flat.append_array([q.x, q.y, q.z])
+		counts.append(pts.size())
+	data.pen_ends = by_name.keys()
+	data.port = {"session": lines[0], "cycles": lines.size() - 1, "boundaries": counts.size(), "missing_strokes": missing,
+			"gaps_mm": gaps, "session_ms": t1 - t0, "boundary_ms": Time.get_ticks_msec() - t1}
+	var st: String = curvenet.start("boundary_patches", [flat, counts, edge])
+	if not st.begins_with("STARTED"):
+		_fail("boundary_patches: " + st)
+
+func _port_poll() -> void:
+	var pr: Dictionary = curvenet.poll()
+	if not pr.done:
+		if int(pr.host_ms) > PORT_TIMEOUT_MS:
+			_fail("boundary_patches: still triangulating after %d s" % (PORT_TIMEOUT_MS / 1000))
+		return
+	var r := str(pr.result)
+	data.port.patches = r
+	data.port.triangulate_ms = int(pr.host_ms)
+	print("[dress-on] port: %s; %d cycles, %d boundaries, missing strokes %s; session %d ms, boundaries %d ms, triangulate %d ms: %s" % [
+			data.port.session, data.port.cycles, data.port.boundaries, str(data.port.missing_strokes), data.port.session_ms,
+			data.port.boundary_ms, data.port.triangulate_ms, r])
+	var worst := []
+	for k in str(r.get_slice("failed_at=", 1)).split(",", false):
+		if k.is_valid_int() and int(k) < data.port.gaps_mm.size():
+			worst.append("%s:%smm" % [k, str(data.port.gaps_mm[int(k)])])
+	print("[dress-on] port: failed boundaries with their largest point gap: %s; all gaps %s" % [", ".join(worst), str(data.port.gaps_mm)])
+	if not r.begins_with("ok"):
+		_fail("boundary_patches: " + r)
+		return
+	var patches := _kv(r, "patches")
+	data.counts = {"strokes": data.pen_ends.size(), "cycles": int(data.port.cycles), "openings": 0, "patches": patches,
+			"pen_ends": data.pen_ends}
+	_goto("MESH", "strokes %d port cycles %d patches %d" % [data.pen_ends.size(), data.port.cycles, patches])
+
+# A port stroke id's fitted polyline: stroke_<id>, or the mirror of stroke id - 1.
+static func _port_stroke(by_name: Dictionary, sid: int):
+	var n := "stroke_%03d" % sid
+	if by_name.has(n):
+		return by_name[n]
+	n = "stroke_%03d_mirror" % (sid - 1)
+	return by_name[n] if by_name.has(n) else null
+
+# The span from fractional index a to b, resampled to about one point per edge length.
+# It is sampled low to high and then reversed if need be, so the two cycles sharing a
+# span get the same points and their patches weld.
+static func _append_span(pts: PackedVector3Array, poly: PackedVector3Array, a: float, b: float, edge: float) -> void:
+	var lo := minf(a, b)
+	var hi := maxf(a, b)
+	var path := PackedVector3Array([_at(poly, lo)])
+	for k in range(int(floor(lo)) + 1, int(ceil(hi))):
+		path.append(poly[k])
+	path.append(_at(poly, hi))
+	var cum := [0.0]
+	for i in range(1, path.size()):
+		cum.append(cum[-1] + path[i - 1].distance_to(path[i]))
+	var total: float = cum[-1]
+	var n := maxi(1, int(round(total / edge)))
+	var out := PackedVector3Array()
+	var k := 0
+	for m in n + 1:
+		var d := total * m / n
+		while k < path.size() - 2 and cum[k + 1] < d:
+			k += 1
+		var seg: float = cum[k + 1] - cum[k] if path.size() > 1 else 0.0
+		out.append(path[k].lerp(path[mini(k + 1, path.size() - 1)], (d - cum[k]) / seg if seg > 0.0 else 0.0))
+	if b < a:
+		out.reverse()
+	for q in out:
+		if pts.is_empty() or pts[-1].distance_to(q) > 1e-6:
+			pts.append(q)
+
+static func _at(poly: PackedVector3Array, x: float) -> Vector3:
+	var i := clampi(int(floor(x)), 0, poly.size() - 1)
+	return poly[i].lerp(poly[mini(i + 1, poly.size() - 1)], x - floor(x))
+
 func _jkey(v: Vector3) -> String:
 	return "%.6f,%.6f,%.6f" % [v.x, v.y, v.z]
 
-
-# The junctions the strokes layer recorded for stroke k, flat xyz in the Body frame.
-func _recorded_junctions(k: int) -> PackedFloat32Array:
-	var flat := PackedFloat32Array()
-	if data.has("recorded_junctions"):
-		for p in data.recorded_junctions[k]:
-			flat.append_array([p.x, p.y, p.z])
-		return flat
-	var all = JSON.parse_string(str(data.get("strokes_from", {}).get("meta", {}).get("junctions", "[]")))
-	if typeof(all) != TYPE_ARRAY or k >= all.size():
-		return flat
-	for p in all[k]:
-		flat.append_array([float(p[0]), float(p[1]), float(p[2])])
-	return flat
 
 
 # The proximity for MuJoCo crossings (capsule radius is half of it), matching
@@ -386,6 +489,7 @@ func _author(first: bool) -> void:
 				data.body_fit_moved = fit.moved
 				print("[dress-on] body_fit: %d stroke points moved out of the body, %d junctions pinned to earlier strokes" % [fit.moved, fit.pinned])
 			data.strokes_from = {"path": opts.strokes_from, "strokes": strokes.size(), "meta": saved.meta}
+			data.layer_strokes = strokes
 			events = StrokesUsd.events(strokes)
 			strokes_ready.emit(strokes)
 		else:
@@ -407,29 +511,21 @@ func _author(first: bool) -> void:
 			return
 		if not bool(opts.body_snap):
 			curvenet.set_param("snap_radius", 0.0)
-		if str(opts.crossings) == "recorded":
-			curvenet.set_param("defer_meshing", 1.0)
 		data.pen_ends = []
 		data.authored = []
 		_authored_of = {}
+		if str(opts.crossings) == "recorded":
+			_port_start()
+			return
 		if opts.pen == "scripted" and not pen_external:
 			pen_queue = events.duplicate()
 			pen_finished = true
 		elif opts.pen == "scripted":
 			pass # the bridge replays the same source, with its visuals
 		return
-	if _end_pending >= 0:
-		var pr: Dictionary = curvenet.poll()
-		if not pr.done:
-			if int(pr.host_ms) > SOLVE_TIMEOUT_MS:
-				_fail("pen_end stroke %d: still solving after %d s" % [_end_pending, SOLVE_TIMEOUT_MS / 1000])
-			return
-		var done_r := str(pr.result)
-		data.pen_ends.append(done_r)
-		if done_r.begins_with("FAIL"):
-			_fail("pen_end stroke %d: %s" % [_end_pending, done_r])
-			return
-		_end_pending = -1
+	if data.has("port"):
+		_port_poll()
+		return
 	var n := 0
 	while not pen_queue.is_empty() and (opts.pen_instant or n < PEN_EVENTS_PER_FRAME):
 		var e: Dictionary = pen_queue.pop_front()
@@ -466,13 +562,7 @@ func _author(first: bool) -> void:
 						polys.append(a.points)
 					cx = mujoco.crossings(polys, _crossing_proximity())
 				var r: String
-				if str(opts.crossings) == "recorded":
-					# On the stage's worker thread: the frame goes on, and the queue waits
-					# for this stroke before the next one, so topology stays in order.
-					curvenet.start("pen_end_recorded", [sid, _recorded_junctions(e.stroke), e.stroke])
-					_end_pending = e.stroke
-					return
-				elif cx.is_empty():
+				if cx.is_empty():
 					r = curvenet.pen_end_raw(sid)
 				else:
 					var flat := PackedFloat32Array()
@@ -490,11 +580,6 @@ func _author(first: bool) -> void:
 	if not pen_queue.is_empty() or not pen_finished:
 		return
 	var last: String = data.pen_ends[-1] if not data.pen_ends.is_empty() else ""
-	# Recorded strokes found their cycles without meshing them; mesh them once, now.
-	if str(opts.crossings) == "recorded":
-		var t_mesh := Time.get_ticks_msec()
-		var left = curvenet.call_now("mesh_deferred", [1 << 20])
-		print("[dress-on] mesh_deferred: %s left after %d ms" % [str(left), Time.get_ticks_msec() - t_mesh])
 	var cb: String = curvenet.build_curvenet()
 	var kw = curvenet.knots()
 	var knots: Array = MeshWire.knots(kw) if typeof(kw) == TYPE_PACKED_FLOAT32_ARRAY else []
@@ -527,7 +612,9 @@ func _mesh(first: bool) -> void:
 		_mesh_done(data.garment, "FIXTURE garment")
 		return
 	if first:
-		var r: String = curvenet.start_mesh_build(opts.mesh_edge, opts.weld_eps)
+		# Port cycles meet where the fitted strokes cross, which a sample can miss by a few mm.
+		var weld: float = maxf(float(opts.weld_eps), PORT_WELD_M) if data.has("port") else float(opts.weld_eps)
+		var r: String = curvenet.start_mesh_build(opts.mesh_edge, weld)
 		if not r.begins_with("STARTED"):
 			_fail("mesh_build: " + r)
 		return
@@ -536,6 +623,7 @@ func _mesh(first: bool) -> void:
 		return
 	var r := str(p.result)
 	data.mesh = {"mesh_build": r, "host_ms": p.host_ms}
+	print("[dress-on] mesh_build: %d ms: %s" % [int(p.host_ms), r])
 	if not r.begins_with("ok"):
 		_fail("mesh_build: " + r)
 		return
@@ -558,6 +646,9 @@ func _mesh_done(g: Dictionary, note: String) -> void:
 	data.mesh.merge({"vertices": nv, "triangles": nf, "loops": loops.size(), "rims": rims.size(), "components": comps,
 			"finite": MeshTopo.all_finite(g.vertices)})
 	garment_ready.emit(g.vertices, g.triangles, "mesh")
+	if data.has("port"):
+		_goto("DONE", "%s | %d v %d f, %d components, %d boundary loops, %d rims" % [note, nv, nf, comps, loops.size(), rims.size()])
+		return
 	# A skirt is one closed shell, double-sided in its geometry: one component, no boundary
 	# loop, and two rims where the drawn tube was open (waist, hem).
 	if nf == 0 or comps != 1 or loops.size() != 0 or rims.size() != 2 or not data.mesh.finite:
