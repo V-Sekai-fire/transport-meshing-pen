@@ -54,6 +54,8 @@ var _frame_max_ms := 0.0
 var _frame_hist := [0, 0, 0]
 var _frame_slow: Array = []
 var _cued := false
+var _frame_ms := PackedInt32Array([0, 0, 0])
+var _frame_max := 0.0
 
 func _say(s: String) -> void:
 	print("[%5.1fs] %s" % [Time.get_ticks_msec() / 1000.0, s])
@@ -95,6 +97,10 @@ func _initialize() -> void:
 
 func _process(_dt: float) -> bool:
 	_frames += 1
+	if _frames > 2:
+		var ms := _dt * 1000.0
+		_frame_max = maxf(_frame_max, ms)
+		_frame_ms[0 if ms < 7.0 else (1 if ms < 17.0 else 2)] += 1
 	var now := Time.get_ticks_usec()
 	if _phase == "replay_run" and _last_frame_us > 0:
 		var ms := (now - _last_frame_us) / 1000.0
@@ -350,6 +356,7 @@ func _finish(verdict: String) -> void:
 		_say("save_strokes: " + str(_main.dress_on_save_strokes(_arg("save_strokes"))))
 	_say("frame gaps (wall clock, replay): max %.1f ms; <7 ms %d, 7-17 ms %d, >17 ms %d; slow: %s" % [_frame_max_ms, _frame_hist[0], _frame_hist[1],
 			_frame_hist[2], ", ".join(_frame_slow.slice(0, 12))])
+	_say("frames: longest %.1f ms; under 7 ms %d, 7-17 ms %d, over 17 ms %d" % [_frame_max, _frame_ms[0], _frame_ms[1], _frame_ms[2]])
 	_say("RESULT: " + verdict)
 	_phase = "done"
 	if _out != null:
