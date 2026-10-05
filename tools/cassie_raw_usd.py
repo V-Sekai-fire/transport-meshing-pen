@@ -197,7 +197,9 @@ def raw_json(v):
 def session_subset(data):
     """What the graph port's session replay reads, in canvas space; it mirrors on its own."""
     raw = json.loads(data, parse_float=decimal.Decimal)
-    states = [{k: st[k] for k in ("interactionType", "elementID", "mirroring", "canvasScale", "time")}
+    tap = ("primaryHandPos", "canvasPos", "canvasRot")
+    states = [{k: st[k] for k in ("interactionType", "elementID", "mirroring", "canvasScale", "time")
+               + (tap if st["interactionType"] == ADD_PATCH else ())}
               for st in raw["systemStates"]]
     added = {st["elementID"] for st in states if st["interactionType"] == ADD_STROKE}
     keep = ("position", "isIntersection", "isAtExistingNode", "isAtNewEndpoint")
