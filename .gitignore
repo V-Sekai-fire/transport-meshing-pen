@@ -52,3 +52,5 @@ build*/
 # Native translations, one per ELF hash and platform: tools/build.exs on a desk, the release in CI.
 /bintr/
 addons/cineform/bin/
+# A desk's build settings; .env.example shows the keys.
+.env

@@ -51,7 +51,8 @@ references:
       libgodot_riscv.linux.template_release.double.x86_64.so
       56fda131e858c87bcf970316d4a0d2c36665bb2f6fb223dc1ebe821199dfea4b;
       libgodot_riscv.macos.template_release.double.universal
-      e2464e813b1e347040b45f5d6c6a39ce099d5775f9958b6214c418b115bf0822, with
+      e2464e813b1e347040b45f5d6c6a39ce099d5775f9958b6214c418b115bf0822 (replaced on
+      2026-10-05, below), with
       its Resources/Info.plist
       2e62373a2fed03fcc4d6df9c8edde42533f9b726af8d1690d3ea32701b8097e4.
   - type: software
@@ -74,3 +75,19 @@ references:
       939b694cf5bec117b8de15a008d81d8e149b14105ccb2121531d5aa28abb7ff2. The
       translations in bintr/ are made against this build (its Machine layout
       enters each hash) by tools/build.exs and are not tracked.
+  - type: software
+    title: godot-sandbox at double precision, macOS universal with native translation
+    authors:
+      - name: Alf-André Walla (fwsGonzo)
+      - name: V-Sekai-fire
+    repository-code: https://github.com/V-Sekai-fire/godot-sandbox
+    commit: 3358d218a56a6e50eb1c2af47245fc49a80da396
+    license: BSD-3-Clause
+    notes: >-
+      The Windows entry's branch feat/bintr-emit, built on the Mac desk (M2 Pro)
+      on 2026-10-05 with Apple clang and SCons 4.11.1: platform=macos
+      arch=universal target=template_release precision=double, in 235 s.
+      sha256: libgodot_riscv.macos.template_release.double.universal
+      6515959aacc003dcf5b2537d6302c77edffbe0f141e6c30fe047c24b8330f93b; its
+      Resources/Info.plist is unchanged. The translations in bintr/ are made
+      against this build by tools/build.exs and are not tracked.
