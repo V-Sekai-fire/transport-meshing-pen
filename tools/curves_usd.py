@@ -4,8 +4,8 @@
   python tools/curves_usd.py to-curves <in.usda> <out.curves>
 
 .curves is CASSIE's plain-text stroke list: a "v <count>" line opens each stroke and
-<count> "x y z" lines follow. It carries points only, in the Unity app's left-handed,
-Y-up canvas space, in metres. The .usda is the stroke format the pen saves: one
+<count> "x y z" lines follow. It carries points only, in the sketching app's
+left-handed, Y-up canvas space, in metres. The .usda is the stroke format the pen saves: one
 BasisCurves prim per stroke (type linear) under /Creation, upAxis Y, metersPerUnit 1, in
 the right-handed Body frame, so Z is negated on the way in. A --to-body transform
 (translation, then uniform scale about the origin) is recorded in customLayerData with
@@ -163,7 +163,7 @@ def main(argv):
         strokes = to_body(parse_curves(raw.decode("utf-8")), (tx, ty, tz), s)
         meta = {"source": o.src.replace("\\", "/").split("/")[-1], "source_blake3": blake3(raw).hexdigest()[:12],
                 "source_rev": o.source_rev, "converter": "dress-on tools/curves_usd.py",
-                "from_frame": "unity left-handed y-up canvas, metres", "flip": "z",
+                "from_frame": "sketching app left-handed y-up canvas, metres", "flip": "z",
                 "to_body_translate": Gf.Vec3d(tx, ty, tz), "to_body_scale": s,
                 "split": split or "unlisted", "unblinded": bool(o.unblind and split == "test")}
         open(o.dst, "w").write(write_usda(strokes, meta=meta))
