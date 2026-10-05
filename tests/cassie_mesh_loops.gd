@@ -74,7 +74,8 @@ func _drawing(rng: RandomNumberGenerator, lvl: W.Level) -> Dictionary:
 	for a in arcs.size():
 		if rng.randi_range(0, 1) == 1:
 			arcs[a].reverse()
-	return {"mesh": kind, "n": n, "nudge": nudge, "points": points, "strokes": arcs, "faces": mesh["faces"]}
+	return {"mesh": kind, "n": n, "nudge": nudge, "points": points, "strokes": arcs, "faces": mesh["faces"],
+			"caps": mesh.get("caps", [])}
 
 
 func _straight(points: Dictionary, a, b, c) -> bool:
@@ -119,7 +120,7 @@ func _torus(n: int) -> Dictionary:
 
 
 ## An open tube of n around by n - 1 along: its rings are the circles and the straight lines along it.
-## The two rims are closed loops with nothing inside them, so they bound no face of the mesh.
+## The two rims bound no face of the mesh, but a closed rim is a cycle CASSIE may surface, so each is an allowed cap.
 func _tube(n: int) -> Dictionary:
 	var points := {}
 	var rows := n - 1
@@ -136,7 +137,7 @@ func _tube(n: int) -> Dictionary:
 	for u in n:
 		for v in rows:
 			faces.append([Vector2i(u, v), Vector2i((u + 1) % n, v), Vector2i((u + 1) % n, v + 1), Vector2i(u, v + 1)])
-	return {"points": points, "rings": rings, "faces": faces}
+	return {"points": points, "rings": rings, "faces": faces, "caps": [rings[0], rings[rows]]}
 
 
 ## The closed ring of grid keys on the cube's surface in the plane axis = level.
@@ -182,33 +183,17 @@ func _edge(a, b) -> Array:
 	return [a, b] if str(a) < str(b) else [b, a]
 
 
-## "" when the replay ends with exactly the mesh's quads, as sorted stroke-id lists.
+## "" when the replay ends with exactly the mesh's quads, as sorted stroke-id lists, plus any of its caps.
 func _mismatch(d: Dictionary) -> String:
-	var stroke_of := {}
-	for k in d["strokes"].size():
-		var arc: Array = d["strokes"][k]
-		for i in range(1, arc.size()):
-			stroke_of[_edge(arc[i - 1], arc[i])] = k
-	var want := []
-	for q in d["faces"]:
-		var ids := []
-		for i in 4:
-			var s: int = stroke_of[_edge(q[i], q[(i + 1) % 4])]
-			if not ids.has(s):
-				ids.append(s)
-		ids.sort()
-		want.append(ids)
-	want.sort()
+	var want := _cycles(d, d["faces"])
 	if control:
 		want.append([-1])
 	var session_text := JSON.stringify(_session(d))
 	var text: String = stage.session_replay(session_text)
 	if not text.begins_with("ok"):
 		return text.strip_edges()
-	var got := []
-	for line in text.split("\n", false).slice(1):
-		got.append(Array(line.get_slice("|", 0).strip_edges().split(" ")).map(func(x): return int(x)))
-	got.sort()
+	var caps := _cycles(d, d["caps"])
+	var got := _replayed(text).filter(func(f): return not caps.has(f))
 	if got == want:
 		return ""
 	if OS.get_environment("CASSIE_DUMP") != "":
@@ -216,6 +201,37 @@ func _mismatch(d: Dictionary) -> String:
 	var missing := want.filter(func(f): return not got.has(f))
 	var extra := got.filter(func(f): return not want.has(f))
 	return "%d quads, replay %d: missing %s, extra %s" % [want.size(), got.size(), missing, extra]
+
+
+## Each loop of keys as the sorted ids of the strokes that draw its sides.
+func _cycles(d: Dictionary, loops: Array) -> Array:
+	var stroke_of := {}
+	for k in d["strokes"].size():
+		var arc: Array = d["strokes"][k]
+		for i in range(1, arc.size()):
+			stroke_of[_edge(arc[i - 1], arc[i])] = k
+	var out := []
+	for q in loops:
+		var ids := []
+		for i in q.size():
+			var b = q[(i + 1) % q.size()]
+			if q[i] == b:
+				continue
+			var s: int = stroke_of[_edge(q[i], b)]
+			if not ids.has(s):
+				ids.append(s)
+		ids.sort()
+		out.append(ids)
+	out.sort()
+	return out
+
+
+func _replayed(text: String) -> Array:
+	var got := []
+	for line in text.split("\n", false).slice(1):
+		got.append(Array(line.get_slice("|", 0).strip_edges().split(" ")).map(func(x): return int(x)))
+	got.sort()
+	return got
 
 
 func _session(d: Dictionary) -> Dictionary:
@@ -279,24 +295,8 @@ func _rates(ladder: Array) -> void:
 
 
 func _score(d: Dictionary) -> Array:
-	var stroke_of := {}
-	for k in d["strokes"].size():
-		var arc: Array = d["strokes"][k]
-		for i in range(1, arc.size()):
-			stroke_of[_edge(arc[i - 1], arc[i])] = k
-	var want := []
-	for q in d["faces"]:
-		var ids := []
-		for i in 4:
-			var s: int = stroke_of[_edge(q[i], q[(i + 1) % 4])]
-			if not ids.has(s):
-				ids.append(s)
-		ids.sort()
-		want.append(ids)
-	var text: String = stage.session_replay(JSON.stringify(_session(d)))
-	var got := []
-	for line in text.split("\n", false).slice(1):
-		got.append(Array(line.get_slice("|", 0).strip_edges().split(" ")).map(func(x): return int(x)))
+	var want := _cycles(d, d["faces"])
+	var caps := _cycles(d, d["caps"])
+	var got := _replayed(stage.session_replay(JSON.stringify(_session(d)))).filter(func(f): return not caps.has(f))
 	var hit := want.filter(func(f): return got.has(f)).size()
 	return [want.size(), hit, got.filter(func(f): return not want.has(f)).size()]
-
