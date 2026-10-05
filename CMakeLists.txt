@@ -1,14 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(transport_meshing_pen C CXX)
 
-# The fiber's context switch (guest/fiber, Gate 0F) is a .S file; clang
-# assembles it, and needs the same target triple as C (the toolchain file
-# only sets C and CXX).
-if(CMAKE_C_COMPILER_TARGET AND NOT CMAKE_ASM_COMPILER_TARGET)
-	set(CMAKE_ASM_COMPILER_TARGET ${CMAKE_C_COMPILER_TARGET})
-endif()
-enable_language(ASM)
-
 # The stage code lives in its own repositories, placed by the goal manifest;
 # WEFT_ROOT is the root of that checkout.
 set(WEFT_ROOT "${CMAKE_SOURCE_DIR}/../.." CACHE PATH "Root of the manifest checkout")
@@ -22,40 +14,17 @@ set(USD_GUEST_ROOT ${WEFT_ROOT}/3-interactor/usd-guest)
 set(GGML_ROOT ${WEFT_ROOT}/2-contract/ggml)
 
 # __FILE__ (ggml's asserts) and debug info name sources relative to their
-# repository, as they were named inside interactor-dress-on before the split,
-# so a committed ELF names neither the machine nor the checkout it was built in.
-add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}/=")
-foreach(root GUEST_RUNTIME_ROOT GUEST_COMMON_ROOT GGML_RD_ROOT CURVENET_ROOT LASSO_ROOT USD_GUEST_ROOT)
+# repository, so a committed ELF names neither the machine nor the checkout it
+# was built in. guest_runtime.cmake maps this project and the roots it builds.
+foreach(root GUEST_COMMON_ROOT CURVENET_ROOT LASSO_ROOT USD_GUEST_ROOT)
 	add_compile_options("-ffile-prefix-map=${${root}}/=")
 endforeach()
-add_compile_options("-ffile-prefix-map=${GGML_ROOT}/=vendor/ggml/")
 
-# The guest ELF. It builds against godot-sandbox's guest API
-# (contract-guest-runtime's vendor/sandbox-api) and nothing else; the riscv64
-# sysroot comes in through the toolchain file that build.sh passes.
-
-# The helper would otherwise download a generated header from upstream's
-# releases. The guest includes <api.hpp> only.
-set(DOWNLOAD_RUNTIME_API OFF CACHE BOOL "" FORCE)
-add_subdirectory(${GUEST_RUNTIME_ROOT}/vendor/sandbox-api/cmake sandbox_api)
-
-# The GPU layer is a library, not a member of one program: every ELF that
-# touches the GPU links it (composition -- one ELF per stage, each with its own
-# heap, rather than one monolith).
-add_library(rd_compute STATIC ${GUEST_RUNTIME_ROOT}/guest/rd_compute.cpp)
-target_include_directories(rd_compute PUBLIC ${GUEST_RUNTIME_ROOT}/guest)
-target_link_libraries(rd_compute PUBLIC sandbox_api)
-
-# One ELF per stage, each installed at this project's root as <name>.elf,
-# which is what the pen's Sandbox nodes load.
-function(add_stage_elf name)
-	add_sandbox_program(${name} ${ARGN})
-	target_link_libraries(${name} PRIVATE rd_compute -lm -lstdc++)
-	add_custom_command(TARGET ${name} POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${name}> ${CMAKE_SOURCE_DIR}/${name}.elf
-		COMMENT "Installing ${name}.elf"
-	)
-endfunction()
+# sandbox_api, rd_compute, pump, ggml, ggml_rd and add_stage_elf come from
+# contract-guest-runtime; the riscv64 sysroot comes in through the toolchain
+# file that build.sh passes.
+set(GUEST_RUNTIME_GGML ON)
+include(${GUEST_RUNTIME_ROOT}/cmake/guest_runtime.cmake)
 
 # The curvenet stage (Cut 4): Cassie's pen -> curvenet -> mesh on Geogram,
 # PMP and MWT subsets, Eigen-free. interactor-curvenet's cmake/curvenet.cmake
@@ -70,35 +39,8 @@ endif()
 # lasso.elf (RFD 2287 step 2) on the same godot-lite shim.
 include(${LASSO_ROOT}/cmake/lasso.cmake)
 
-
 # Stage 1: the GPU layer's own probes.
 add_stage_elf(dress_on ${GUEST_RUNTIME_ROOT}/guest/main.cpp)
-
-# ggml (contract-ggml's checkout, V-Sekai-fire/ggml): static, riscv64 at rv64gc,
-# one thread, no dynamic backend loading, no OpenMP, llamafile or vector
-# paths, never Zfh (Gate 0F probe 15 and its Zfh control). ggml's own CMake
-# gives its libraries -march=rv64gc; the TUs that include its headers build
-# at sandbox-api's -march=rv64gcv_zba_zbb_zbs_zbc. Gate 0F's probes.elf and
-# Cut 3's ggml-rd both link it.
-foreach(opt GGML_NATIVE GGML_BACKEND_DL BUILD_SHARED_LIBS GGML_OPENMP GGML_LLAMAFILE
-		GGML_RVV GGML_RV_ZFH GGML_RV_ZVFH GGML_RV_ZICBOP GGML_RV_ZIHINTPAUSE GGML_RV_ZVFBFWMA
-		GGML_BUILD_TESTS GGML_BUILD_EXAMPLES GGML_CCACHE)
-	set(${opt} OFF CACHE BOOL "" FORCE)
-endforeach()
-add_subdirectory(${GGML_ROOT} ggml EXCLUDE_FROM_ALL)
-# ggml stamps ggml_commit() with `git rev-parse HEAD`; stamp the commit the ELFs
-# were verified against, so a committed ELF does not change with every ggml commit.
-get_target_property(_ggml_defs ggml-base COMPILE_DEFINITIONS)
-list(FILTER _ggml_defs EXCLUDE REGEX "^GGML_COMMIT=")
-list(APPEND _ggml_defs "GGML_COMMIT=\"04b55bba\"")
-set_target_properties(ggml-base PROPERTIES COMPILE_DEFINITIONS "${_ggml_defs}")
-# clang predefines __riscv_v_intrinsic for every riscv64 target, V or not,
-# and ggml-cpu keys its RVV paths on that macro alone; at rv64gc they then
-# fail on vfloat32m8_t. Undefine it so the scalar paths are compiled (Gate 0F
-# finding 5).
-target_compile_options(ggml-cpu PRIVATE -U__riscv_v_intrinsic)
-# ggml is compiled as is; its warnings are upstream's, silenced here rather than patched.
-target_compile_options(ggml-cpu PRIVATE -Wno-switch)
 
 # Gate 0F: probes.elf, the sandbox runtime probes (gates/0f-runtime). One ELF,
 # its own Sandbox, sharing only rd_compute. Its kernels come from
@@ -116,50 +58,6 @@ target_include_directories(probes PRIVATE ${GUEST_RUNTIME_ROOT}/guest ${GUEST_RU
 set_source_files_properties(${GUEST_RUNTIME_ROOT}/guest/probes/zfh_probe.cpp PROPERTIES COMPILE_OPTIONS "-march=rv64gc_zfh")
 target_compile_definitions(probes PRIVATE PROBES_WITH_GGML=1)
 target_link_libraries(probes PRIVATE ggml ggml-cpu ggml-base)
-
-# --- Cut 3: the ggml-rd backend and Gate 3's ggml_test.elf -----------------------
-
-# The pump protocol: a job on a guest fiber, advanced one host call at a time.
-add_library(pump STATIC ${GUEST_RUNTIME_ROOT}/guest/pump/pump.cpp ${GUEST_RUNTIME_ROOT}/guest/fiber/fiber.cpp
-	${GUEST_RUNTIME_ROOT}/guest/fiber/fiber_riscv64.S)
-target_include_directories(pump PUBLIC ${GUEST_RUNTIME_ROOT}/guest)
-target_link_libraries(pump PUBLIC sandbox_api)
-
-# ggml-rd: ggml's backend over rd_compute. An OBJECT library, so every
-# ops/<op>.cpp is linked and its GGML_RD_OP registrar runs; the glob means an
-# op family adds a file, not a line here. The kernels come from Lean through
-# kernels/ggml/gen.sh (${CMAKE_BINARY_DIR}/ggml_kernels.inc).
-file(GLOB GGML_RD_OPS CONFIGURE_DEPENDS ${GGML_RD_ROOT}/guest/ggml-rd/ops/*.cpp)
-# The CPU fallback (guest/ggml-rd/rd_cpu.cpp): the same kernels' slangc cpp
-# emits (kernels/ggml/cpp, the other target of rule 2), through the runner
-# the host L2 harness uses, generated into the build directory from
-# kernels/ggml/kernels.txt. -ffp-contract=off: rv64gc has FMA and the emits
-# must round like the harness's x86 build (and ggml-cpu's reference).
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-set(GGML_RD_CPU_RUNNER ${CMAKE_BINARY_DIR}/ggml_rd_cpu_kernels.cpp)
-file(GLOB GGML_RD_EMITS CONFIGURE_DEPENDS ${GGML_RD_ROOT}/kernels/ggml/cpp/*_emit.cpp)
-add_custom_command(
-	OUTPUT ${GGML_RD_CPU_RUNNER}
-	COMMAND ${Python3_EXECUTABLE} ${GGML_RD_ROOT}/tests/ggml_rd_kernels/gen_host_kernels.py
-		${GGML_RD_ROOT}/kernels/ggml/kernels.txt ${GGML_RD_CPU_RUNNER} ${GGML_RD_ROOT}/kernels/ggml/cpp_siblings.txt
-	DEPENDS ${GGML_RD_ROOT}/tests/ggml_rd_kernels/gen_host_kernels.py ${GGML_RD_ROOT}/kernels/ggml/kernels.txt
-		${GGML_RD_ROOT}/kernels/ggml/cpp_siblings.txt ${GGML_RD_EMITS}
-	COMMENT "ggml-rd CPU fallback runners from kernels/ggml/kernels.txt"
-)
-add_library(ggml_rd OBJECT
-	${GGML_RD_ROOT}/guest/ggml-rd/ggml-rd.cpp
-	${GGML_RD_ROOT}/guest/ggml-rd/rd_graph.cpp
-	${GGML_RD_ROOT}/guest/ggml-rd/rd_kernels.cpp
-	${GGML_RD_ROOT}/guest/ggml-rd/rd_pack.cpp
-	${GGML_RD_ROOT}/guest/ggml-rd/rd_cpu.cpp
-	${GGML_RD_CPU_RUNNER}
-	${GGML_RD_OPS}
-)
-set_source_files_properties(${GGML_RD_CPU_RUNNER} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off"
-	INCLUDE_DIRECTORIES "${GGML_RD_ROOT}/kernels/ggml/cpp;${GUEST_RUNTIME_ROOT}/guest/avbd/slang-rt")
-target_include_directories(ggml_rd PUBLIC ${GGML_RD_ROOT}/guest/ggml-rd ${GGML_RD_ROOT}/kernels/ggml
-	${GGML_RD_ROOT}/tests/ggml_rd_kernels ${CMAKE_BINARY_DIR} ${GGML_ROOT}/src)
-target_link_libraries(ggml_rd PUBLIC ggml ggml-base rd_compute)
 
 # Gate 3 (G3.ops): test-backend-ops in the guest, ggml-rd against ggml-cpu.
 # test-backend-ops.cpp is ggml's own, compiled as is (its three embedder hooks
