@@ -5,7 +5,7 @@
 name: double
 on:
   push:
-    branches: [feat/dress-on, main/main]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 concurrency:
