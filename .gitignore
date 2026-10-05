@@ -51,3 +51,4 @@ build*/
 /usd_probe.elf.uid
 # Native translations, one per ELF hash and platform: tools/build.exs on a desk, the release in CI.
 /bintr/
+addons/cineform/bin/

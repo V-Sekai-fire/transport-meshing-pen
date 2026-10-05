@@ -35,6 +35,7 @@ func _ready() -> void:
 		var mid := (a0 + a1) / 2.0
 		l.position = Vector3(cos(mid), sin(mid), 0.01) * Vector3(0.08, 0.08, 1.0)
 		l.pixel_size = 0.0004
+		l.font = load("res://fonts/Inter-Regular.ttf")
 		add_child(l)
 		_labels.append(l)
 	visible = false

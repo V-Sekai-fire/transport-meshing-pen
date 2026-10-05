@@ -27,9 +27,9 @@ window/size/mode=4
 window/size/resizable=false
 window/size/maximize_disabled=true
 window/vsync/vsync_mode=0
-; Under Movie Maker (the "movie" feature) the recording is a vertical 1080x1920 short in a window.
-window/size/viewport_width.movie=1080
-window/size/viewport_height.movie=1920
+; Under Movie Maker (the "movie" feature) the recording is 3840x2160 in a window.
+window/size/viewport_width.movie=3840
+window/size/viewport_height.movie=2160
 window/size/mode.movie=0
 
 [editor_plugins]
@@ -38,6 +38,7 @@ enabled=PackedStringArray("res://addons/GPUTrail-main/plugin.cfg", "res://addons
 
 [gui]
 
+theme/custom_font="res://fonts/Inter-Regular.ttf"
 theme/default_font_multichannel_signed_distance_field=true
 
 [rendering]

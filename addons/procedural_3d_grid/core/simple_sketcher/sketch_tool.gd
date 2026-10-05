@@ -13,7 +13,7 @@ class_name SketchTool extends Node3D
 @export var pressure: float = 0.0
 @export var color: Color = Color.BLACK
 
-@onready var simple_sketch = SimpleSketch.new()
+var simple_sketch = null
 
 
 func _ready() -> void:
@@ -21,7 +21,7 @@ func _ready() -> void:
 		printerr("Cannot make the canvas ready.")
 		return
 
-	simple_sketch.target_mesh = canvas.get_node("strokes").mesh
+	simple_sketch = load("res://xr/line3d_sketch.gd").new(canvas.get_node("strokes"))
 
 
 var prev_active: bool = false
