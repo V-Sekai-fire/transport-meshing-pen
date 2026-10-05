@@ -12,13 +12,15 @@ extends "res://stages/stage_base.gd"
 const MeshWire := preload("res://util/mesh_wire.gd")
 const REQUIRED := ["cn_reset", "cn_set_param", "cn_set_body", "pen_begin", "pen_point", "pen_end", "pen_end_with_crossings", "patch_count",
 		"curvenet_build", "curvenet_curves", "curvenet_knots", "mesh_build", "mesh_vertices", "mesh_indices",
-		"mesh_boundary_loops", "mesh_rims", "session_replay", "boundary_patches"]
+		"mesh_boundary_loops", "mesh_rims", "session_replay", "boundary_patches", "parts_vertices", "parts_triangles", "parts_counts", "set_parts"]
+
+var mem_mb := 1024
 
 func _ready() -> void:
 	stage_name = "curvenet"
 	# A PMP remesh of a whole garment runs far past the default 8000 x 2^20
 	# instructions (Gate 0F probe 5); 2^24 units is effectively unbounded.
-	open_sandbox("res://curvenet.elf", 1024, 4096, 1 << 24, {}, PackedStringArray(REQUIRED))
+	open_sandbox("res://curvenet.elf", mem_mb, 4096, 1 << 24, {}, PackedStringArray(REQUIRED))
 
 func _cn_call(fn: String, args: Array = []) -> String:
 	if sandbox == null:
