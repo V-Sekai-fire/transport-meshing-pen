@@ -276,9 +276,63 @@ func _rig() -> void:
 
 # --- AUTHOR / MESH -------------------------------------------------------------------------
 
+# Each stroke in drawing order is pushed out of the body as it is drawn. A junction it
+# shares with a stroke already drawn stays where that stroke put it; one it is first to
+# reach is set by its own push. Junctions sit on the strokes as vertices (cassie_raw_usd).
+func _fit_in_drawing_order(strokes: Array, meta: Dictionary) -> Dictionary:
+	var err: String = mujoco.load_body("res://fixtures/%s/avatar.obj" % opts.avatar)
+	if err != "":
+		return {"error": err}
+	var axis_z := float(meta.get("body_axis_z", 0.0))
+	var clearance := float(meta.get("body_clearance", 0.004))
+	var recorded = JSON.parse_string(str(meta.get("junctions", "[]")))
+	var is_junction := {}
+	for g in recorded:
+		for q in g:
+			is_junction[_jkey(Vector3(float(q[0]), float(q[1]), float(q[2])))] = true
+	var placed := {}
+	var out := []
+	var moved := 0
+	var pinned := 0
+	for s in strokes:
+		var r: Dictionary = mujoco.push(s.points, 0.0, axis_z, clearance)
+		if r.has("error"):
+			return r
+		moved += int(r.moved)
+		var pts: PackedVector3Array = r.points
+		for i in pts.size():
+			var key := _jkey(s.points[i])
+			if not is_junction.has(key):
+				continue
+			if placed.has(key):
+				pts[i] = placed[key]
+				pinned += 1
+			else:
+				placed[key] = pts[i]
+		var moved_s: Dictionary = s.duplicate()
+		moved_s.points = pts
+		out.append(moved_s)
+	var junctions := []
+	for g in recorded:
+		var pts := PackedVector3Array()
+		for q in g:
+			var v := Vector3(float(q[0]), float(q[1]), float(q[2]))
+			pts.append(placed.get(_jkey(v), v))
+		junctions.append(pts)
+	return {"strokes": out, "junctions": junctions, "moved": moved, "pinned": pinned}
+
+
+func _jkey(v: Vector3) -> String:
+	return "%.6f,%.6f,%.6f" % [v.x, v.y, v.z]
+
+
 # The junctions the strokes layer recorded for stroke k, flat xyz in the Body frame.
 func _recorded_junctions(k: int) -> PackedFloat32Array:
 	var flat := PackedFloat32Array()
+	if data.has("recorded_junctions"):
+		for p in data.recorded_junctions[k]:
+			flat.append_array([p.x, p.y, p.z])
+		return flat
 	var all = JSON.parse_string(str(data.get("strokes_from", {}).get("meta", {}).get("junctions", "[]")))
 	if typeof(all) != TYPE_ARRAY or k >= all.size():
 		return flat
@@ -323,14 +377,14 @@ func _author(first: bool) -> void:
 			# A sketch not drawn on this body is fitted with the collision guest: only
 			# points inside the body move, out through its surface.
 			if str(saved.meta.get("body_fit", "")) == "mujoco" and mujoco != null:
-				var fit: Dictionary = mujoco.push_out(strokes, "res://fixtures/%s/avatar.obj" % opts.avatar, 0.0,
-						float(saved.meta.get("body_axis_z", 0.0)), float(saved.meta.get("body_clearance", 0.004)))
+				var fit: Dictionary = _fit_in_drawing_order(strokes, saved.meta)
 				if fit.has("error"):
 					_fail("body_fit: " + str(fit.error))
 					return
 				strokes = fit.strokes
+				data.recorded_junctions = fit.junctions
 				data.body_fit_moved = fit.moved
-				print("[dress-on] body_fit: %d stroke points moved out of the body" % fit.moved)
+				print("[dress-on] body_fit: %d stroke points moved out of the body, %d junctions pinned to earlier strokes" % [fit.moved, fit.pinned])
 			data.strokes_from = {"path": opts.strokes_from, "strokes": strokes.size(), "meta": saved.meta}
 			events = StrokesUsd.events(strokes)
 			strokes_ready.emit(strokes)

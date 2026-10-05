@@ -36,12 +36,10 @@ func crossings(strokes: Array, proximity: float) -> PackedVector3Array:
 		out.append(Vector3(f[i * 3], f[i * 3 + 1], f[i * 3 + 2]))
 	return out
 
-# Loads the triangle mesh at obj_path as the one model, then moves stroke points
-# inside it out through its surface along a horizontal ray from the vertical axis
-# (axis_x, axis_z), plus thickness. {strokes, moved} or {error}.
-func push_out(strokes: Array, obj_path: String, axis_x: float, axis_z: float, thickness: float) -> Dictionary:
+# Loads the triangle mesh at obj_path as the one model, for push(). "" or the error.
+func load_body(obj_path: String) -> String:
 	if not available():
-		return {"error": "no mujoco sandbox (%s)" % reason}
+		return "no mujoco sandbox (%s)" % reason
 	var verts: Array[String] = []
 	var tris: Array[PackedInt32Array] = []
 	for line in FileAccess.get_file_as_string(obj_path).split("\n"):
@@ -52,7 +50,7 @@ func push_out(strokes: Array, obj_path: String, axis_x: float, axis_z: float, th
 			for k in range(2, f.size() - 1):
 				tris.append(PackedInt32Array([int(f[1].split("/")[0]) - 1, int(f[k].split("/")[0]) - 1, int(f[k + 1].split("/")[0]) - 1]))
 	if verts.is_empty() or tris.is_empty():
-		return {"error": "no triangles in %s" % obj_path}
+		return "no triangles in %s" % obj_path
 	# MuJoCo refuses a mesh attribute past 64 KB, so the body loads as pieces.
 	var assets := ""
 	var geoms := ""
@@ -74,22 +72,27 @@ func push_out(strokes: Array, obj_path: String, axis_x: float, axis_z: float, th
 		piece += 1
 	var xml := "<mujoco><option gravity='0 0 0'/><asset>%s</asset><worldbody>%s</worldbody></mujoco>" % [assets, geoms]
 	if not bool(call_now("mjc_load_xml", [xml.to_utf8_buffer()])):
-		return {"error": "mjc_load_xml refused %s" % obj_path}
+		return "mjc_load_xml refused %s" % obj_path
+	return ""
+
+# Moves the points inside the loaded body out through its surface along a horizontal
+# ray from the vertical axis (axis_x, axis_z), plus thickness; a point inside a nested
+# fold exits one surface and may still be inside, so it repeats. {points, moved} or {error}.
+func push(points: PackedVector3Array, axis_x: float, axis_z: float, thickness: float) -> Dictionary:
 	var pts := PackedFloat64Array()
-	for s in strokes:
-		for v in s.points:
-			pts.append_array([v.x, v.y, v.z])
-	var r = call_now("mj_push_out", [pts, axis_x, axis_z, thickness])
-	if typeof(r) != TYPE_PACKED_FLOAT64_ARRAY or r.size() != pts.size() + 1:
-		return {"error": "mj_push_out: %s" % str(r).left(120)}
-	var out := []
-	var i := 0
-	for s in strokes:
-		var moved_s: Dictionary = s.duplicate()
-		var p := PackedVector3Array()
-		for _v in s.points:
-			p.append(Vector3(r[i], r[i + 1], r[i + 2]))
-			i += 3
-		moved_s.points = p
-		out.append(moved_s)
-	return {"strokes": out, "moved": int(r[r.size() - 1])}
+	for v in points:
+		pts.append_array([v.x, v.y, v.z])
+	var total := 0
+	for _pass in 4:
+		var r = call_now("mj_push_out", [pts, axis_x, axis_z, thickness])
+		if typeof(r) != TYPE_PACKED_FLOAT64_ARRAY or r.size() != pts.size() + 1:
+			return {"error": "mj_push_out: %s" % str(r).left(120)}
+		var moved_now := int(r[r.size() - 1])
+		total += moved_now
+		pts = r.slice(0, pts.size())
+		if moved_now == 0:
+			break
+	var out := PackedVector3Array()
+	for k in range(0, pts.size(), 3):
+		out.append(Vector3(pts[k], pts[k + 1], pts[k + 2]))
+	return {"points": out, "moved": total}

@@ -35,9 +35,15 @@ MIRROR_X = 0.125
 ADD_STROKE, DELETE_STROKE, ADD_PATCH, DELETE_PATCH = 1, 2, 3, 4
 SAMPLES_PER_SEGMENT = 64
 # Body-frame similarity that seats the dress on fixtures/foxgirl/avatar.obj: q = (p - centre) * scale + to.
-PLACEMENT = {"centre": [0.125, 1.0723, -0.1852], "scale": 1.25, "to": [0.0, 1.2223, 0.027],
-             "inside_before": 1139, "inside_after": 40, "samples": 11619, "body": "fixtures/foxgirl/avatar.obj",
-             "rule": "winding number > 0.5 over every stroke sample"}
+# Keypoints from STARFORGED-STD-3001 Appendix E, Table E.2-1 (50th %ile female), scaled to the
+# avatar's 1.70 m stature: crotch at stature less sitting height (158.5 - 83.5 cm) = 0.804 m, and
+# hip breadth 37.5 cm = 0.402 m. Waist height is not in Appendix E: 99/158.5 of stature (ISO 7250
+# typical) = 1.062 m. The dress is 0.407 m wide at the hip line, a width scale of 0.989, so it is
+# placed at its drawn size: a translation putting its waist (narrowest section, y 1.23) on the body
+# waist and its mirror plane on the midline. The collision guest moves what then collides.
+PLACEMENT = {"centre": [0.125, 1.23, -0.204], "scale": [1.0, 1.0, 1.0], "to": [0.0, 1.062, -0.007],
+             "keypoints": {"crotch": 0.804, "waist": 1.062, "hip_breadth": 0.402, "stature": 1.70},
+             "body": "fixtures/foxgirl/avatar.obj"}
 
 
 def samples(stroke):
@@ -147,11 +153,35 @@ def alive_patches(session):
     return out
 
 
+def with_junction_vertices(strokes, joins, tol=1e-4):
+    """Each stroke with every junction lying on it (within tol) inserted as a vertex, at the
+    junction's own coordinates, so a later per-point move keeps the junction on both strokes."""
+    every = np.vstack([j for j in joins if len(j)]) if any(len(j) for j in joins) else np.zeros((0, 3))
+    out = []
+    for P in strokes:
+        a, b = P[:-1], P[1:]
+        ab = b - a
+        inserts = {}
+        for q in every:
+            t = np.clip(np.einsum('ij,ij->i', q - a, ab) / np.maximum(np.einsum('ij,ij->i', ab, ab), 1e-30), 0, 1)
+            dist = np.linalg.norm(a + ab * t[:, None] - q, axis=1)
+            k = int(np.argmin(dist))
+            if dist[k] <= tol:
+                inserts.setdefault(k, []).append((float(t[k]), q))
+        rows = []
+        for k in range(len(P)):
+            rows.append(P[k])
+            for _, q in sorted(inserts.get(k, []), key=lambda e: e[0]):
+                rows.append(q)
+        out.append(np.array(rows, dtype=P.dtype))
+    return out
+
+
 def place(points):
     """PLACEMENT on Body-frame points; strokes and junctions take the same move, so junctions stay on their strokes."""
     c = np.asarray(PLACEMENT["centre"], np.float64)
     t = np.asarray(PLACEMENT["to"], np.float64)
-    return ((np.asarray(points, np.float64) - c) * PLACEMENT["scale"] + t).astype(np.float32)
+    return ((np.asarray(points, np.float64) - c) * np.asarray(PLACEMENT["scale"], np.float64) + t).astype(np.float32)
 
 
 def raw_json(v):
@@ -221,6 +251,7 @@ def main(argv):
     session = json.loads(data)
     strokes, names, joins, drawn, deleted = final_sketch(session)
     counts = alive_patches(session)
+    strokes = with_junction_vertices(strokes, joins)
     body = cu.to_body([s.astype(np.float32) for s in strokes])
     body_joins = cu.to_body([j.astype(np.float32) for j in joins])
     body = [place(b) for b in body]
