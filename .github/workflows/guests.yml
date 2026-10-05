@@ -4,7 +4,7 @@ name: guests
 
 on:
   push:
-    branches: [feat/rung-dev, feat/dress-on]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -16,7 +16,7 @@ env:
   GODOT_VERSION: 4.7.2
   SLANG_VERSION: 2026.13.1
   # The goal manifest's branch; every project in it names its own revision.
-  MANIFEST_BRANCH: main/main
+  MANIFEST_BRANCH: main
 
 jobs:
   build:
