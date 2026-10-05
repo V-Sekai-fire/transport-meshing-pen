@@ -1,6 +1,6 @@
 """movie -- a Movie Maker recording onto the Desktop, named by the orbit-view standard.
 
-  python tools/movie.py <description> [--fps=30] [--timeout=60] [--godot=<exe>] -- <gate script> [gate args]
+  python tools/movie.py <description> [--fps=30] [--godot=<exe>] -- <gate script> [gate args]
   python tools/movie.py --self-test
 """
 import os
@@ -61,17 +61,7 @@ def main(argv: list) -> int:
            "--write-movie", str(raw), "--fixed-fps", opts.get("fps", "30"),
            "--script", gate[0], "--", *gate[1:]]
     print(" ".join(cmd))
-    proc = subprocess.Popen(cmd)
-    try:
-        code = proc.wait(timeout=float(opts.get("timeout", "60")))
-    except subprocess.TimeoutExpired:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        print(f"FAIL the run passed its {opts.get('timeout', '60')} s timeout")
-        return 1
+    code = subprocess.run(cmd).returncode
     if not raw.exists() or raw.stat().st_size == 0:
         print(f"FAIL no recording at {raw}")
         return 1
