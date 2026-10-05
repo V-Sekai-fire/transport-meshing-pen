@@ -1,14 +1,16 @@
-"""cassie_split -- train / validation / test splits of CASSIE's curves corpus, as a .usda.
+"""cassie_split -- train / validation / test splits of CASSIE's sketches, as a .usda.
 
-  python tools/cassie_split.py <datasource-cassie>/data/curves <out.usda> [--rev=SHA]
+  python tools/cassie_split.py <datasource-cassie>/data/raw_data <out.usda> [--rev=SHA]
 
-Split by group, never by file: a participant's six sketches (NN-a-b.curves) are one
-group, and so are a named object's variants (architecture, architecture-2), so no
+Splits the sketches of raw_data/, the app's own export and the one datasource-cassie folder
+not blocklisted; a split names sketches, so it holds for every folder's copy of a sketch.
+Split by group, never by file: a participant's six sketches (NN-a-b) are one group, and so
+are a named object's variants (architecture, architecture-2; large_hat with hat), so no
 person's or subject's strokes sit on both sides. Groups are shuffled with a fixed seed
 and cut 60/20/20. The sketches this work already opened (SEEN) stay in train: a set
 that has been looked at cannot be held out after the fact. Test is withheld: it is
 listed with each file's BLAKE3 so a later change to it is detectable, and
-tools/curves_usd.py refuses to convert a test file without --unblind.
+tools/curves_usd.py and tools/cassie_raw_usd.py refuse a test sketch without --unblind.
 """
 import argparse
 import os
@@ -22,17 +24,22 @@ from pxr import Sdf, Usd, UsdGeom, Vt
 SEED = 20260925
 SEEN = {"dress", "hat", "flower", "vintage_car"}
 CUT = (0.6, 0.2)
+ALIAS = {"large_hat": "hat"}
+EXT = ".json"
 
 
 def group_of(name):
     m = re.match(r"^(\d{2})-\d-\d$", name)
-    return "participant-" + m.group(1) if m else re.sub(r"-\d+$", "", name)
+    if m:
+        return "participant-" + m.group(1)
+    base = re.sub(r"-\d+$", "", name)
+    return ALIAS.get(base, base)
 
 
 def split(files):
     groups = {}
     for f in sorted(files):
-        groups.setdefault(group_of(f[:-len(".curves")]), []).append(f)
+        groups.setdefault(group_of(f[:-len(EXT)]), []).append(f[:-len(EXT)])
     seen = sorted(g for g in groups if g in SEEN)
     rest = sorted(g for g in groups if g not in SEEN)
     random.Random(SEED).shuffle(rest)
@@ -45,11 +52,11 @@ def split(files):
 
 def main(argv):
     ap = argparse.ArgumentParser()
-    ap.add_argument("curves_dir")
+    ap.add_argument("raw_dir")
     ap.add_argument("out")
     ap.add_argument("--rev", default="")
     o = ap.parse_args(argv)
-    files = [f for f in os.listdir(o.curves_dir) if f.endswith(".curves")]
+    files = [f for f in os.listdir(o.raw_dir) if f.endswith(EXT)]
     parts, groups = split(files)
     stage = Usd.Stage.CreateInMemory()
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.y)
@@ -57,16 +64,16 @@ def main(argv):
     root = stage.DefinePrim("/Splits", "Scope")
     stage.SetDefaultPrim(root)
     stage.GetRootLayer().customLayerData = {
-        "dataset": "V-Sekai/datasource-cassie data/curves", "dataset_rev": o.rev, "seed": SEED,
+        "dataset": "V-Sekai/datasource-cassie data/raw_data", "dataset_rev": o.rev, "seed": SEED,
         "rule": "group split (participant, or named subject), seeded shuffle, 60/20/20; seen sketches stay in train",
         "seen": Vt.StringArray(sorted(SEEN)), "withheld": "test"}
     for k, fs in parts.items():
         p = stage.DefinePrim("/Splits/" + k, "Scope")
         p.CreateAttribute("files", Sdf.ValueTypeNames.StringArray, custom=True).Set(Vt.StringArray(fs))
-        sums = [blake3(open(os.path.join(o.curves_dir, f), "rb").read()).hexdigest()[:12] for f in fs]
+        sums = [blake3(open(os.path.join(o.raw_dir, f + EXT), "rb").read()).hexdigest()[:12] for f in fs]
         p.CreateAttribute("blake3", Sdf.ValueTypeNames.StringArray, custom=True).Set(Vt.StringArray(sums))
         p.CreateAttribute("groups", Sdf.ValueTypeNames.Int, custom=True).Set(
-            len({group_of(f[:-len(".curves")]) for f in fs}))
+            len({group_of(f) for f in fs}))
     open(o.out, "w").write(stage.GetRootLayer().ExportToString())
     print("ok %d files in %d groups: %s -> %s" % (len(files), len(groups),
           ", ".join("%s %d" % (k, len(v)) for k, v in parts.items()), o.out))
@@ -74,7 +81,8 @@ def main(argv):
 
 
 def test_split_of(splits_path, name):
-    """The split a .curves file belongs to, per a cassie_split .usda ("" when unlisted)."""
+    """The split a sketch belongs to, by name with or without its extension ("" when unlisted)."""
+    name = os.path.splitext(os.path.basename(name))[0]
     stage = Usd.Stage.Open(splits_path)
     for k in ("train", "validation", "test"):
         p = stage.GetPrimAtPath("/Splits/" + k)

@@ -14,9 +14,9 @@ curves_usd does (Z negated), then PLACEMENT seats them on the avatar body (the s
 
 The expectation is the number of cycles the app's algorithm had at the end. The export logs every
 patch it ever created and not the ones it dropped, so a found patch counts unless it was deleted,
-lost a stroke to deletion, or was split: a later stroke has two patches in its batch (the patches
-logged while it was committed, just before its ADD_STROKE) that contain it and together hold all
-of the earlier patch's strokes. A mirror stroke's id is its original's
+lost a stroke to deletion, or was split: a later stroke has two or more patches in its batch
+(the patches logged while it was committed, just before its ADD_STROKE) that contain it and
+together hold all of the earlier patch's strokes. A mirror stroke's id is its original's
 plus one, so deleting a stroke deletes its mirror, and a stroke splits with its mirror too.
 
 The layer also carries the session subset the CASSIE graph port replays ("session", numbers in
@@ -24,7 +24,6 @@ the app's own spelling) and the alive patches as sorted stroke-id lists ("expect
 """
 import argparse
 import decimal
-import itertools
 import json
 import os
 import sys
@@ -142,7 +141,7 @@ def alive_patches(session):
             if stroke_at[s] <= t:
                 continue
             qs = [set(patches[q]["strokesID"]) for q in ids if {s, s + 1} & set(patches[q]["strokesID"])]
-            if any(P <= (a | b) for a, b in itertools.combinations(qs, 2)):
+            if len(qs) >= 2 and P <= set().union(*qs):
                 split = True
                 break
         if split:
@@ -224,6 +223,9 @@ def self_test():
         ("a neighbour sharing two strokes does not split",
          log([(S, 1), (S, 2), (S, 3), (P, 10), (S, 4), (S, 5), (P, 11), (S, 6)],
              [(10, [1, 2, 3, 4]), (11, [2, 3, 5, 6])]), 2),
+        ("a stroke and its mirror split a patch three ways",
+         log([(S, 1), (S, 2), (S, 3), (S, 4), (P, 10), (S, 5), (P, 11), (P, 12), (P, 13), (S, 6)],
+             [(10, [1, 2, 3, 4, 5]), (11, [1, 2, 6, 7]), (12, [3, 6]), (13, [4, 5, 7])]), 3),
         ("a deleted stroke drops its patches", log([(S, 1), (S, 2), (P, 10), (S, 3), (D, 2)], [(10, [1, 2, 3])]), 0),
     ]
     bad = 0
@@ -241,12 +243,18 @@ def main(argv):
     ap.add_argument("out", nargs="?")
     ap.add_argument("--source-rev", default="")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--unblind", action="store_true", help="convert a withheld test-split sketch anyway")
     a = ap.parse_args(argv)
     if a.self_test:
         sys.exit(1 if self_test() else 0)
     from blake3 import blake3
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import curves_usd as cu
+    from cassie_split import test_split_of
+    if not os.path.exists(cu.SPLITS):
+        sys.exit("no %s: the split decides whether %s is withheld" % (cu.SPLITS, a.raw))
+    if test_split_of(cu.SPLITS, a.raw) == "test" and not a.unblind:
+        sys.exit("%s is in the withheld test split (%s); pass --unblind to convert it" % (a.raw, cu.SPLITS))
     data = open(a.raw, "rb").read()
     session = json.loads(data)
     strokes, names, joins, drawn, deleted = final_sketch(session)
