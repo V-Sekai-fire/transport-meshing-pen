@@ -49,7 +49,6 @@ var _calib_frames := 0
 var _strokes_file := ""
 var _frame_cam: Camera3D = null
 var _cued := false
-var _session := {}
 
 func _say(s: String) -> void:
 	print("[%5.1fs] %s" % [Time.get_ticks_msec() / 1000.0, s])
@@ -122,8 +121,6 @@ func _process(_dt: float) -> bool:
 					o[k] = str(meta[k]) if k == "crossings" else str(meta[k]).to_lower() not in ["0", "false"]
 				if _arg(k) != "":
 					o[k] = _arg(k) if k == "crossings" else _arg(k) == "true"
-			# The session replay is the graph port alone, so it runs before the strokes.
-			_session = _session_check(_main.pipeline, meta)
 			_say("replay settings: crossings %s body_snap %s" % [o.get("crossings", "mujoco"), o.get("body_snap", true)])
 			match _arg("control"):
 				"":
@@ -231,7 +228,7 @@ func _evaluate_file() -> void:
 			best = str(ends[i])
 	_say("pen_ends: %d, first not ok at %d (%s); last ok: %s" % [ends.size(), first_bad,
 			str(ends[first_bad]).left(160) if first_bad >= 0 else "-", best.left(200)])
-	var session := _session
+	var session := _session_check(p, sf.get("meta", {}))
 	if p.state != "DONE":
 		_finish("FAIL (%s)" % p.status())
 		return
@@ -254,14 +251,13 @@ func _session_check(p, meta: Dictionary) -> Dictionary:
 	if typeof(expected) != TYPE_ARRAY:
 		_say("session: no readable expected_cycles")
 		return {"ok": false, "why": "session without expected_cycles"}
-	if p.curvenet == null:
-		return {"ok": false, "why": "no curvenet stage for the session replay"}
-	while p.curvenet.busy():
-		OS.delay_msec(20)
-	p.curvenet.poll()
-	var t0 := Time.get_ticks_usec()
-	var r: String = p.curvenet.session_replay(str(meta.session))
-	var ms := (Time.get_ticks_usec() - t0) / 1000
+	# The pipeline's own replay of the session (AUTHOR, crossings "recorded"); it runs once.
+	var port_run: Dictionary = p.data.get("port", {})
+	if not port_run.has("replay"):
+		_say("session: the pipeline did not replay the session")
+		return {"ok": false, "why": "no session replay from the pipeline"}
+	var r: String = port_run.replay
+	var ms := int(port_run.session_ms)
 	var lines := r.strip_edges().split("\n")
 	if lines.is_empty() or not lines[0].begins_with("ok "):
 		_say("session: replay failed in %d ms: %s" % [ms, r.left(200)])

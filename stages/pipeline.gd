@@ -343,7 +343,6 @@ func _port_start() -> void:
 	var flat := PackedFloat32Array()
 	var counts := PackedInt32Array()
 	var missing := []
-	var gaps := []
 	for i in range(1, lines.size()):
 		var parts := lines[i].split(" |", true, 1)
 		var pts := PackedVector3Array()
@@ -359,16 +358,12 @@ func _port_start() -> void:
 			pts.remove_at(pts.size() - 1)
 		if pts.size() < 3:
 			continue
-		var gap := 0.0
-		for k in pts.size():
-			gap = maxf(gap, pts[k].distance_to(pts[(k + 1) % pts.size()]))
-		gaps.append(snappedf(gap * 1000.0, 0.1))
 		for q in pts:
 			flat.append_array([q.x, q.y, q.z])
 		counts.append(pts.size())
 	data.pen_ends = by_name.keys()
 	data.port = {"session": lines[0], "cycles": lines.size() - 1, "boundaries": counts.size(), "missing_strokes": missing,
-			"gaps_mm": gaps, "session_ms": t1 - t0, "boundary_ms": Time.get_ticks_msec() - t1}
+			"replay": r, "session_ms": t1 - t0, "boundary_ms": Time.get_ticks_msec() - t1}
 	var st: String = curvenet.start("boundary_patches", [flat, counts, edge])
 	if not st.begins_with("STARTED"):
 		_fail("boundary_patches: " + st)
@@ -385,11 +380,6 @@ func _port_poll() -> void:
 	print("[dress-on] port: %s; %d cycles, %d boundaries, missing strokes %s; session %d ms, boundaries %d ms, triangulate %d ms: %s" % [
 			data.port.session, data.port.cycles, data.port.boundaries, str(data.port.missing_strokes), data.port.session_ms,
 			data.port.boundary_ms, data.port.triangulate_ms, r])
-	var worst := []
-	for k in str(r.get_slice("failed_at=", 1)).split(",", false):
-		if k.is_valid_int() and int(k) < data.port.gaps_mm.size():
-			worst.append("%s:%smm" % [k, str(data.port.gaps_mm[int(k)])])
-	print("[dress-on] port: failed boundaries with their largest point gap: %s; all gaps %s" % [", ".join(worst), str(data.port.gaps_mm)])
 	if not r.begins_with("ok"):
 		_fail("boundary_patches: " + r)
 		return
