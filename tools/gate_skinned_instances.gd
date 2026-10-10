@@ -87,7 +87,15 @@ func _on_built(stats: Dictionary) -> void:
 	print("%s  planted: copies read against the next cell are caught (%d of %d)" % ["PASS" if cp[1] > 0 else "FAIL", cp[1], cp[0]])
 	ok = ok and cp[1] > 0
 	ran += 1
-	ok = ok and ran == 5
+	var have: bool = ProjectSettings.has_setting("shader_globals/ramp_sun_dir") and ProjectSettings.has_setting("shader_globals/ramp_sun_color")
+	print("%s  the sakura toon ramp's shader globals are declared" % ["PASS" if have else "FAIL"])
+	ok = ok and have
+	ran += 1
+	var planted: bool = ProjectSettings.has_setting("shader_globals/ramp_sun_dir_planted")
+	print("%s  planted: an undeclared global is reported missing" % ["PASS" if not planted else "FAIL"])
+	ok = ok and not planted
+	ran += 1
+	ok = ok and ran == 7
 	print("stats: %s" % JSON.stringify(stats))
-	print("RESULT: %s (%d of 5 checks ran)" % ["PASS" if ok else "FAIL", ran])
+	print("RESULT: %s (%d of 7 checks ran)" % ["PASS" if ok else "FAIL", ran])
 	quit(0 if ok else 1)
