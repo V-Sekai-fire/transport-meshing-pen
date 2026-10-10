@@ -1,5 +1,5 @@
 #!/bin/bash
-# Vendor the Godot port of Sakuragaoka Station and the MToon shaders it renders with, from
+# Vendor the Godot port of Sakuragaoka Station, its Slug guest (slug.elf) and the MToon shaders it renders with, from
 # entities-sakuragaoka-station at a commit some remote branch contains.
 #   tools/vendor_station.sh <commit> [checkout]     checkout defaults to the placed 4-entities one
 set -euo pipefail
@@ -11,6 +11,7 @@ git -C "$src" branch -r --contains "$sha" | grep -q . || { echo "FAIL $sha is on
 rm -rf addons/sakuragaoka_station addons/Godot-MToon-Shader
 git -C "$src" archive "$sha" addons/sakuragaoka_station addons/Godot-MToon-Shader | tar -x
 git -C "$src" show "$sha:LICENSE" > addons/sakuragaoka_station/LICENSE
+for f in slug.elf slug.elf.uid slug.double.elf slug.double.elf.uid; do git -C "$src" show "$sha:$f" > "$f"; done
 cat > addons/sakuragaoka_station/CITATION.cff <<CFF
 cff-version: 1.2.0
 message: If you use this addon, cite the Godot port of Sakuragaoka Station and its original.

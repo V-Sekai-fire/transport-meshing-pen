@@ -42,9 +42,10 @@ static func water_material(ctx, o: Dictionary = {}):
 	return m
 
 
-static func sway_foliage(ctx, map, _cell_scale, name: String, o: Dictionary = {}):
+static func sway_foliage(ctx, map, cell_scale, name: String, o: Dictionary = {}):
 	var m = ctx.mat.foliage("#ffffff", map, {"name": "env-sway-" + name, "paint": o.get("paint", 0.03), "alphaTest": o.get("alphaTest", 0.5)})
 	m.user_data["envSway"] = true
+	m.user_data["uCell"] = Vector2(cell_scale[0], cell_scale[1])
 	return m
 
 
