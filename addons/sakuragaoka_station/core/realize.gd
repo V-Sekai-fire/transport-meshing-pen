@@ -273,7 +273,14 @@ func _instanced(o) -> void:
 			mesh = am
 			_tally("palette instanced (under decals)", base_tris * o.count, o if base_tris > 0 else null)
 		_mult = 1
+	var per_copy := {}
 	if mesh == null and (md == "slug" or md == "mesh") and _slug_ok(m, gd):
+		# per-copy texture data the original keeps in instance attributes: the atlas cell and the tint
+		if o.user_data.has("aCell") and m.user_data.has("uCell"):
+			per_copy["cell"] = o.user_data["aCell"]
+			per_copy["cell_scale"] = m.user_data["uCell"]
+		if o.instance_color != null:
+			per_copy["tint"] = o.instance_color
 		mesh = ArrayMesh.new()
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _slug_arrays(gd, gd.idx, m))
 		mesh.surface_set_material(0, _slug_mtoon(m))
@@ -290,7 +297,7 @@ func _instanced(o) -> void:
 		mesh = _array_mesh(_coloured(gd, gd.idx, _mean_colour(m), gd.cols if m.vertex_colors else null, "g%d" % gd.id))
 		_tally("palette instanced", gd.idx.size() / 3 * o.count)
 		fill = _mtoon(m)
-	if o.instance_color != null:
+	if o.instance_color != null and not per_copy.has("tint"):
 		stats.instance_tints_dropped += o.count
 	# One rigid bone per copy under one identity root, posed at its instance transform: MToon moves
 	# vertices itself (skip_vertex_transform), which applies a MultiMesh's instance transform twice.
@@ -308,7 +315,7 @@ func _instanced(o) -> void:
 		skin.add_named_bind(bone, Transform3D())
 	var mi := MeshInstance3D.new()
 	mi.name = "mesh"
-	mi.mesh = _skinned(mesh, o.count)
+	mi.mesh = _skinned(mesh, o.count, per_copy)
 	mi.skin = skin
 	if fill != null:
 		mi.material_override = fill
@@ -318,7 +325,9 @@ func _instanced(o) -> void:
 
 
 ## Every surface of mesh repeated in copies, each copy's vertices weighted 1 to its own skin bind.
-static func _skinned(mesh: ArrayMesh, copies: int) -> ArrayMesh:
+## per_copy may carry "cell" (PackedVector3Array, uv offset in .xy) with "cell_scale" (uv = uv *
+## cell_scale + cell.xy) and "tint" (PackedColorArray, linear, times the sRGB-encoded COLOR).
+static func _skinned(mesh: ArrayMesh, copies: int, per_copy: Dictionary = {}) -> ArrayMesh:
 	var am := ArrayMesh.new()
 	for s in mesh.get_surface_count():
 		var a := mesh.surface_get_arrays(s)
@@ -351,6 +360,22 @@ static func _skinned(mesh: ArrayMesh, copies: int) -> ArrayMesh:
 			for i in n:
 				B[(c * n + i) * 4] = c
 				W[(c * n + i) * 4] = 1.0
+		if per_copy.has("cell") and out[Mesh.ARRAY_TEX_UV] != null:
+			var uv: PackedVector2Array = out[Mesh.ARRAY_TEX_UV]
+			var cs: Vector2 = per_copy["cell_scale"]
+			for c in copies:
+				var off := Vector2(per_copy["cell"][c].x, per_copy["cell"][c].y)
+				for i in n:
+					uv[c * n + i] = uv[c * n + i] * cs + off
+			out[Mesh.ARRAY_TEX_UV] = uv
+		if per_copy.has("tint") and out[Mesh.ARRAY_COLOR] != null:
+			var col: PackedColorArray = out[Mesh.ARRAY_COLOR]
+			for c in copies:
+				var t: Color = per_copy["tint"][c]
+				for i in n:
+					var l := col[c * n + i].srgb_to_linear()
+					col[c * n + i] = Color(l.r * t.r, l.g * t.g, l.b * t.b, col[c * n + i].a).clamp().linear_to_srgb()
+			out[Mesh.ARRAY_COLOR] = col
 		out[Mesh.ARRAY_BONES] = B
 		out[Mesh.ARRAY_WEIGHTS] = W
 		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)

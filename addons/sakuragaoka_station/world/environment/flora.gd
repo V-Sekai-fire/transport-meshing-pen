@@ -294,10 +294,14 @@ class Flora extends RefCounted:
 			env.parkFlora.call(self)
 		# ------------------------------------------------------- instanced meshes
 		var kinds := {
-			"tuft": {"geo": card_geo(3), "mat": Shaders.sway_foliage(ctx, tx.tufts, [0.25, 1], "tufts"), "flat": false},
-			"flower": {"geo": card_geo(2), "mat": Shaders.sway_foliage(ctx, tx.flowers, [0.25, 0.5], "flowers"), "flat": false},
-			"mat": {"geo": flat_geo(), "mat": Shaders.sway_foliage(ctx, tx.mats, [0.5, 0.5], "mats", {"alphaTest": 0.45}), "flat": true},
-			"reed": {"geo": card_geo(3), "mat": Shaders.sway_foliage(ctx, tx.reeds, [0.5, 1], "reeds"), "flat": false},
+			"tuft": {"geo": card_geo(3), "mat": Shaders.sway_foliage(ctx, tx.tufts, [0.25, 1], "tufts"), "flat": false,
+					"cells": func(c): return Vector2(c * 0.25, 0)},
+			"flower": {"geo": card_geo(2), "mat": Shaders.sway_foliage(ctx, tx.flowers, [0.25, 0.5], "flowers"), "flat": false,
+					"cells": func(c): return Vector2((c % 4) * 0.25, 0.5 if c < 4 else 0.0)},
+			"mat": {"geo": flat_geo(), "mat": Shaders.sway_foliage(ctx, tx.mats, [0.5, 0.5], "mats", {"alphaTest": 0.45}), "flat": true,
+					"cells": func(c): return Vector2((c % 2) * 0.5, 0.5 if c < 2 else 0.0)},
+			"reed": {"geo": card_geo(3), "mat": Shaders.sway_foliage(ctx, tx.reeds, [0.5, 1], "reeds"), "flat": false,
+					"cells": func(c): return Vector2(c * 0.5, 0)},
 		}
 		var count := 0
 		var meshes := 0
@@ -311,6 +315,8 @@ class Flora extends RefCounted:
 				var K: Dictionary = kinds[kind]
 				var geo: T.Geometry = (K.geo as T.Geometry).clone()
 				var im := T.InstancedMesh.new(geo, K.mat, list.size())
+				var cells := PackedVector3Array()
+				cells.resize(list.size())
 				for i in list.size():
 					var it: Dictionary = list[i]
 					if K.flat:
@@ -320,6 +326,10 @@ class Flora extends RefCounted:
 					else:
 						im.set_matrix_at(i, T.compose(Vector3(it.x, it.y - 0.02, it.z), Quaternion(Vector3.UP, it.rot), Vector3(it.w, it.h, it.w)))
 					im.set_color_at(i, Color(it.col[0], it.col[1], it.col[2]))
+					var uv0: Vector2 = K.cells.call(it.cell)
+					cells[i] = Vector3(uv0.x, uv0.y, 0.0 if K.flat else it.sway)
+				# the original's per-instance aCell attribute: vMapUv = uv * uCell + aCell.xy
+				im.user_data["aCell"] = cells
 				im.cast_shadow = false
 				im.receive_shadow = not (kind == "flower" and (name == "nanoField" or name == "farbank" or name == "levFar"))
 				im.name = "env-flora-%s-%s" % [name, kind]
