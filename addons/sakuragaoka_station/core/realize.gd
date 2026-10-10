@@ -3,8 +3,8 @@
 # reads its colour from a texture, so each face's colour is an index into a palette texture carried
 # in UV; CSG keeps UV through a union where it would drop vertex colour, and every closed solid of
 # a cell goes through CSG. A cell keeps the union only when it comes out no larger than its solids.
-# Open surfaces are appended as they are, instanced meshes become MultiMeshes at their material's
-# colour, and alpha-cut cards wait for Slug to draw them.
+# Open surfaces are appended as they are, instanced meshes become one skinned mesh with a rigid bone
+# per copy at their material's colour, and alpha-cut cards wait for Slug to draw them.
 #   realize(ctx, root); await one process frame (CSG computes then); finish()
 extends RefCounted
 
@@ -181,20 +181,69 @@ func _instanced(o) -> void:
 		return
 	stats.instanced += 1
 	var gd := _geo_data(o.geometry)
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = _array_mesh(_coloured(gd, gd.idx, m.color, gd.cols if m.vertex_colors else null, "g%d" % gd.id))
-	mm.instance_count = o.count
-	for i in o.count:
-		mm.set_instance_transform(i, o.instance_matrix[i])
+	var r := _coloured(gd, gd.idx, m.color, gd.cols if m.vertex_colors else null, "g%d" % gd.id)
 	if o.instance_color != null:
 		stats.instance_tints_dropped += o.count
-	var mmi := MultiMeshInstance3D.new()
-	mmi.name = o.name if o.name != "" else "instanced"
-	mmi.multimesh = mm
-	mmi.transform = o.matrix_world
-	mmi.material_override = _mtoon(m)
-	_root.add_child(mmi)
+	# One rigid bone per copy, posed at its instance transform: MToon moves vertices itself
+	# (skip_vertex_transform), which applies a MultiMesh's instance transform twice but runs after skinning.
+	var sk := Skeleton3D.new()
+	sk.name = o.name if o.name != "" else "instanced"
+	sk.transform = o.matrix_world
+	var skin := Skin.new()
+	for i in o.count:
+		var bone := "i%d" % i
+		sk.add_bone(bone)
+		sk.set_bone_pose(i, o.instance_matrix[i])
+		skin.add_named_bind(bone, Transform3D())
+	var mi := MeshInstance3D.new()
+	mi.name = "mesh"
+	mi.mesh = _skinned(r.a, o.count)
+	mi.skin = skin
+	mi.material_override = _mtoon(m)
+	_root.add_child(sk)
+	sk.add_child(mi)
+	mi.skeleton = NodePath("..")
+
+
+## The surface a repeated in copies, each copy's vertices weighted 1 to its own bone.
+static func _skinned(a: Array, copies: int) -> ArrayMesh:
+	var pos: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var nor = a[Mesh.ARRAY_NORMAL]
+	var uv = a[Mesh.ARRAY_TEX_UV]
+	var idx = a[Mesh.ARRAY_INDEX]
+	var n := pos.size()
+	var P := PackedVector3Array()
+	var N := PackedVector3Array()
+	var U := PackedVector2Array()
+	var I := PackedInt32Array()
+	var B := PackedInt32Array()
+	var W := PackedFloat32Array()
+	for c in copies:
+		P.append_array(pos)
+		if nor != null:
+			N.append_array(nor)
+		if uv != null:
+			U.append_array(uv)
+		if idx != null:
+			for i in idx:
+				I.append(c * n + i)
+		for i in n:
+			B.append_array([c, 0, 0, 0])
+			W.append_array([1.0, 0.0, 0.0, 0.0])
+	var out := []
+	out.resize(Mesh.ARRAY_MAX)
+	out[Mesh.ARRAY_VERTEX] = P
+	if nor != null:
+		out[Mesh.ARRAY_NORMAL] = N
+	if uv != null:
+		out[Mesh.ARRAY_TEX_UV] = U
+	if idx != null:
+		out[Mesh.ARRAY_INDEX] = I
+	out[Mesh.ARRAY_BONES] = B
+	out[Mesh.ARRAY_WEIGHTS] = W
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)
+	return am
 
 
 func _single(o) -> void:
