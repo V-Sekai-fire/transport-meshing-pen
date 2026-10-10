@@ -2,7 +2,7 @@
 # stages/sandbox_util.gd (Gate 0F): memory_max before program=, references_max before the first
 # object-creating vmcall, execution_timeout in 2^20-instruction units, allocations_max 1,000,000.
 # Native translation: libriscv binary translation runs a guest as native code from
-# res://bintr/bintr-<hash>.so (Linux), .dll (Windows) or .dylib (macOS) built for that program. It is switched on
+# res://bintr/bintr-<hash>.so (Linux) or .dll (Windows) built for that program. It is switched on
 # per process, never in project.godot, and only when such a library is present: the Windows addon
 # build segfaulted with the setting on and no library (2026-09-23), so without a library the
 # setting stays off and the guest runs interpreted.
@@ -16,7 +16,7 @@ static var translated := false
 
 
 static func enable_native_translation() -> bool:
-	var ext: String = {"Linux": ".so", "Windows": ".dll", "macOS": ".dylib"}.get(OS.get_name(), "")
+	var ext := ".so" if OS.get_name() == "Linux" else (".dll" if OS.get_name() == "Windows" else "")
 	if ext == "":
 		return false
 	var dir := DirAccess.open("res://bintr")
@@ -24,7 +24,6 @@ static func enable_native_translation() -> bool:
 		return false
 	for f in dir.get_files():
 		if f.begins_with("bintr-") and f.ends_with(ext):
-			ProjectSettings.set_setting("sandbox/binary_translation/cache_dir", "res://bintr/")
 			ProjectSettings.set_setting("sandbox/binary_translation/enabled", true)
 			translated = true
 			return true
