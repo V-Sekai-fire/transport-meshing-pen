@@ -11,7 +11,9 @@
 #
 # --strokes replays saved strokes with no XR and checks them against the
 # layer's expected counts; --control=drop_seam drops seam_back and must FAIL
-# at MESH. A layer carrying a CASSIE "session" (dress) passes only when
+# at MESH. --control=drop_patch:<k> removes patch k's triangles from the shell
+# and --control=plant_inward puts one garment vertex inside the body; each must
+# FAIL at MESH by name (RFD 3010 gates 1 and 2). A layer carrying a CASSIE "session" (dress) passes only when
 # curvenet's graph port replays it to every one of its "expected_cycles".
 #
 # The pipeline runs with pen = "xr" and stops after MESH, so every stroke comes
@@ -148,6 +150,10 @@ func _process(_dt: float) -> bool:
 					pass
 				"drop_seam":
 					o["drop_seam"] = true
+				"plant_inward":
+					o["plant_inward"] = true
+				var c when str(c).begins_with("drop_patch:"):
+					o["drop_patch"] = int(str(c).get_slice(":", 1))
 				_:
 					_finish("FAIL (unknown control %s)" % _arg("control"))
 					return false

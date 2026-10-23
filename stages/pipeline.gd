@@ -21,6 +21,7 @@ const PenSource := preload("res://xr/pen_source_scripted.gd")
 const MeshTopo := preload("res://util/mesh_topo.gd")
 const MeshWire := preload("res://util/mesh_wire.gd")
 const StrokesUsd := preload("res://util/strokes_usd.gd")
+const GarmentChecks := preload("res://util/garment_checks.gd")
 
 signal state_changed(state: String, record: Dictionary)
 signal body_ready(v: PackedFloat32Array, f: PackedInt32Array)
@@ -77,6 +78,10 @@ const DEFAULTS := {
 	"mesh_workers": 1,        # recorded strokes: curvenet sandboxes meshing patches at once; 0 = min(cores - 1, 8)
 	"weld_eps": 1e-5,
 	"stop_after": "",         # "MESH" for --gate=pen
+	"garment_checks": true,   # RFD 3010: panels, cover and inside after the shell check
+	"cover_reach": 0.05,      # m: how far a drawn stroke point may sit from the garment
+	"drop_patch": -1,         # control: the shell loses patch k's triangles -> FAILED(MESH: panels, cover)
+	"plant_inward": false,    # control: one garment vertex inside the body -> FAILED(MESH: inside)
 	"strokes_from": "",       # a .usda of saved strokes (util/strokes_usd.gd, via usd.elf): replaces the
 	                          # scripted source; its customLayerData rides along as data.strokes_from.meta
 }
@@ -694,10 +699,18 @@ func _author(first: bool) -> void:
 			data.counts.cycles, data.counts.openings, patches, data.counts.curves, data.counts.knots, str(degrees)])
 
 func _mesh(first: bool) -> void:
+	if data.has("checks_task"):
+		_checks_poll()
+		return
 	if data.has("garment"): # the curvenet fixture
 		_mesh_done(data.garment, "FIXTURE garment")
 		return
 	if first:
+		data.patch_points = []
+		if not data.has("port"):
+			for i in maxi(curvenet.patches(), 0):
+				var pv = curvenet.call_now("patch_vertices", [i])
+				data.patch_points.append(pv if typeof(pv) == TYPE_PACKED_FLOAT32_ARRAY else PackedFloat32Array())
 		# Port cycles meet where the fitted strokes cross, which a sample can miss by a few mm.
 		var weld: float = maxf(float(opts.weld_eps), PORT_WELD_M) if data.has("port") else float(opts.weld_eps)
 		# Port patches were remeshed one by one in the pool, their seams held.
@@ -722,6 +735,8 @@ func _mesh(first: bool) -> void:
 			"source_joints": data.joints}, r)
 
 func _mesh_done(g: Dictionary, note: String) -> void:
+	if not data.has("port") and not data.counts.get("fixture", false):
+		_plant_controls(g)
 	var nv: int = g.vertices.size() / 3
 	var nf: int = g.triangles.size() / 3
 	var comps := MeshTopo.components(nv, g.triangles)
@@ -744,11 +759,84 @@ func _mesh_done(g: Dictionary, note: String) -> void:
 		return
 	# A skirt is one closed shell, double-sided in its geometry: one component, no boundary
 	# loop, and two rims where the drawn tube was open (waist, hem).
-	if nf == 0 or comps != 1 or loops.size() != 0 or rims.size() != 2 or not data.mesh.finite:
-		_fail("not a closed skirt shell: %d triangles, %d components, %d boundary loops, %d rims (want >0, 1, 0, 2)%s" % [
-				nf, comps, loops.size(), rims.size(), "" if data.mesh.finite else ", non-finite vertices"])
+	var shell_ok: bool = nf > 0 and comps == 1 and loops.size() == 0 and rims.size() == 2 and data.mesh.finite
+	data.shell = "%d triangles, %d components, %d boundary loops, %d rims (want >0, 1, 0, 2)%s" % [
+			nf, comps, loops.size(), rims.size(), "" if data.mesh.finite else ", non-finite vertices"]
+	print("[dress-on] CHECK shell %s: %s" % ["PASS" if shell_ok else "FAIL", data.shell])
+	if data.counts.get("fixture", false) or not bool(opts.garment_checks):
+		if not shell_ok:
+			_fail("not a closed skirt shell: " + data.shell)
+			return
+		_goto("DONE", "%s | %d v %d f, closed, %d rims" % [note, nv, nf, rims.size()])
 		return
-	_goto("DONE", "%s | %d v %d f, closed, %d rims" % [note, nv, nf, rims.size()])
+	# RFD 3010 gates 1 and 2, off the main thread (the winding number takes seconds).
+	var job := {"cycles": int(data.counts.get("cycles", -1)), "patches": data.get("patch_points", []),
+			"strokes": data.get("layer_strokes", data.get("authored", [])), "v": g.vertices, "f": g.triangles,
+			"body_v": data.get("body_v", PackedFloat32Array()), "body_f": data.get("body_f", PackedInt32Array()),
+			"reach": float(opts.cover_reach), "out": {}}
+	data.checks_job = job
+	data.checks_note = "%s | %d v %d f, closed, %d rims" % [note, nv, nf, rims.size()]
+	data.shell_ok = shell_ok
+	data.checks_task = WorkerThreadPool.add_task(func(): _run_checks(job))
+
+static func _run_checks(job: Dictionary) -> void:
+	var t0 := Time.get_ticks_msec()
+	job.out.panels = GarmentChecks.panels(job.cycles, job.patches, job.v, job.f)
+	job.out.cover = GarmentChecks.cover(job.strokes, job.v, job.f, job.reach)
+	var t1 := Time.get_ticks_msec()
+	job.out.inside = GarmentChecks.inside(job.v, job.body_v, job.body_f)
+	job.out.ms = [t1 - t0, Time.get_ticks_msec() - t1]
+
+func _checks_poll() -> void:
+	if not WorkerThreadPool.is_task_completed(data.checks_task):
+		return
+	WorkerThreadPool.wait_for_task_completion(data.checks_task)
+	data.erase("checks_task")
+	var out: Dictionary = data.checks_job.out
+	data.erase("checks_job")
+	data.checks = {}
+	var bad := []
+	if not data.shell_ok:
+		bad.append("not a closed skirt shell: " + data.shell)
+	var ran := 0
+	for k in CHECKS:
+		if not out.has(k):
+			bad.append("check %s did not run" % k)
+			continue
+		ran += 1
+		var r: Dictionary = out[k]
+		data.checks[k] = r
+		print("[dress-on] CHECK %s %s: %s" % [k, "PASS" if r.ok else "FAIL", r.why])
+		if not r.ok:
+			bad.append("%s: %s" % [k, r.why])
+	print("[dress-on] CHECKS %d of %d ran (panels+cover %d ms, inside %d ms)" % [ran, CHECKS.size(),
+			int(out.get("ms", [-1, -1])[0]), int(out.get("ms", [-1, -1])[1])])
+	if not bad.is_empty():
+		_fail(" | ".join(bad))
+		return
+	_goto("DONE", data.checks_note)
+
+const CHECKS := ["panels", "cover", "inside"]
+
+# Planted controls for RFD 3010 gates 1 and 2: drop_patch k removes the shell triangles
+# nearest patch k; plant_inward moves garment vertex 0 onto the root joint, inside the body.
+func _plant_controls(g: Dictionary) -> void:
+	var k := int(opts.drop_patch)
+	if k >= 0:
+		var before: int = g.triangles.size() / 3
+		g.triangles = GarmentChecks.drop_patch(data.get("patch_points", []), k, g.triangles, g.vertices)
+		print("[dress-on] control drop_patch %d: %d of %d shell triangles removed" % [k, before - g.triangles.size() / 3, before])
+	if bool(opts.plant_inward):
+		var j = data.get("joints", PackedFloat32Array())
+		if j.size() >= 3 and g.vertices.size() >= 3:
+			var v: PackedFloat32Array = g.vertices
+			v[0] = float(j[0])
+			v[1] = float(j[1])
+			v[2] = float(j[2])
+			g.vertices = v
+			print("[dress-on] control plant_inward: garment vertex 0 moved to the root joint %s" % str(Vector3(v[0], v[1], v[2])))
+		else:
+			print("[dress-on] control plant_inward: no joints to move onto")
 
 # --- helpers ---------------------------------------------------------------------------------
 

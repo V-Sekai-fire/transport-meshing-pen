@@ -43,3 +43,19 @@ jobs:
           fi
           echo "--- drop.txt ---"; cat drop.txt
           grep -q "RESULT: FAIL (FAILED(MESH:" drop.txt
+      - name: The panel check's control (drop_patch:0 must FAIL by name)
+        run: |
+          if timeout 300 "$GODOT" --headless --path . --xr-mode off --script tools/gate_replay.gd -- \
+            --strokes=tools/strokes/skirt.usda --control=drop_patch:0 --out=ctl.txt --wallclock=240; then
+            echo "the gate passed a skirt with a panel missing"; exit 1
+          fi
+          echo "--- ctl.txt ---"; cat ctl.txt
+          grep -q "panels: patch 0 has no triangles" ctl.txt
+      - name: The body check's control (plant_inward must FAIL by name)
+        run: |
+          if timeout 300 "$GODOT" --headless --path . --xr-mode off --script tools/gate_replay.gd -- \
+            --strokes=tools/strokes/skirt.usda --control=plant_inward --out=ctl.txt --wallclock=240; then
+            echo "the gate passed a skirt with a vertex inside the body"; exit 1
+          fi
+          echo "--- ctl.txt ---"; cat ctl.txt
+          grep -q "inside: 1 vertices inside the body" ctl.txt
