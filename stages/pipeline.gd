@@ -79,6 +79,7 @@ const DEFAULTS := {
 	"weld_eps": 1e-5,
 	"stop_after": "",         # "MESH" for --gate=pen
 	"garment_checks": true,   # RFD 3010: panels, cover and inside after the shell check
+	"clean_strokes": true,    # a tracked pen's back-and-forth points are dropped (RFD 3010 gate 3)
 	"cover_reach": 0.05,      # m: how far a drawn stroke point may sit from the garment
 	"drop_patch": -1,         # control: the shell loses patch k's triangles -> FAILED(MESH: panels, cover)
 	"plant_inward": false,    # control: one garment vertex inside the body -> FAILED(MESH: inside)
@@ -128,9 +129,83 @@ func start(o: Dictionary = {}) -> String:
 # Pen events from a bridge (body-local). kind: begin | point | end.
 # boundary (begin only): the stroke is the edge of an opening (curvenet's
 # boundary pen mode; a cycle made only of such strokes gets no patch).
+# A tracked pen's points are cleaned first (RFD 3010 gate 3): see _clean_point.
 func pen_event(kind: String, stroke: int, pos: Vector3 = Vector3.ZERO, pressure: float = 0.5,
 		boundary: bool = false) -> void:
-	pen_queue.append({"kind": kind, "stroke": stroke, "pos": pos, "pressure": pressure, "boundary": boundary})
+	if not (str(opts.get("pen", "")) == "xr" and bool(opts.get("clean_strokes", true))):
+		pen_queue.append({"kind": kind, "stroke": stroke, "pos": pos, "pressure": pressure, "boundary": boundary})
+		return
+	match kind:
+		"begin":
+			_held[stroke] = []
+			_sent[stroke] = [pos]
+			data.dropped = data.get("dropped", {})
+			data.dropped[stroke] = 0
+			pen_queue.append({"kind": kind, "stroke": stroke, "pos": pos, "pressure": pressure, "boundary": boundary})
+		"point":
+			_clean_point(stroke, {"kind": kind, "stroke": stroke, "pos": pos, "pressure": pressure})
+		"end":
+			for e in _held.get(stroke, []):
+				pen_queue.append(e)
+			_held.erase(stroke)
+			_sent.erase(stroke)
+			pen_queue.append({"kind": kind, "stroke": stroke, "pos": pos, "pressure": pressure, "boundary": boundary})
+
+# Points a tracked pen sends go back and forth along the path (dev.4 logbook, step 1):
+# a sample lands ahead of the hand and the next returns. Each point waits until
+# CLEAN_HOLD later points have arrived; a held point that the newest point steps back
+# against is dropped, and so is a repeat of the last point. Measured on the dev.4
+# layers, this leaves exactly the plan's points. Cost: CLEAN_HOLD samples of latency,
+# and a turn sharper than 90 degrees loses up to CLEAN_HOLD samples at the corner.
+const CLEAN_HOLD := 2
+var _held := {}
+var _sent := {}
+
+func _clean_point(stroke: int, e: Dictionary) -> void:
+	var held: Array = _held.get(stroke, [])
+	var sent: Array = _sent.get(stroke, [])
+	var p: Vector3 = e.pos
+	var last: Vector3 = held[-1].pos if not held.is_empty() else (sent[-1] if not sent.is_empty() else p)
+	if not (held.is_empty() and sent.is_empty()) and p.is_equal_approx(last):
+		data.dropped[stroke] = int(data.dropped.get(stroke, 0)) + 1
+		return
+	while not held.is_empty():
+		var top: Vector3 = held[-1].pos
+		var base: Vector3
+		if held.size() > 1:
+			base = held[-2].pos
+		elif not sent.is_empty():
+			base = sent[-1]
+		else:
+			break
+		if (p - top).dot(top - base) >= 0.0:
+			break
+		held.pop_back()
+		data.dropped[stroke] = int(data.dropped.get(stroke, 0)) + 1
+	var now: Vector3 = held[-1].pos if not held.is_empty() else sent[-1]
+	if p.is_equal_approx(now):
+		data.dropped[stroke] = int(data.dropped.get(stroke, 0)) + 1
+		_held[stroke] = held
+		return
+	held.append(e)
+	while held.size() > CLEAN_HOLD:
+		var out: Dictionary = held.pop_front()
+		sent.append(out.pos)
+		pen_queue.append(out)
+	_held[stroke] = held
+	_sent[stroke] = sent
+
+# Points of a stroke as sent to curvenet whose step points against the step before it.
+static func reversals(pts: PackedVector3Array) -> int:
+	var d := PackedVector3Array()
+	for q in pts:
+		if d.is_empty() or not q.is_equal_approx(d[-1]):
+			d.append(q)
+	var n := 0
+	for k in range(1, d.size() - 1):
+		if (d[k + 1] - d[k]).dot(d[k] - d[k - 1]) < 0.0:
+			n += 1
+	return n
 
 func pen_finish() -> void:
 	pen_finished = true
@@ -772,6 +847,7 @@ func _mesh_done(g: Dictionary, note: String) -> void:
 	# RFD 3010 gates 1 and 2, off the main thread (the winding number takes seconds).
 	var job := {"cycles": int(data.counts.get("cycles", -1)), "patches": data.get("patch_points", []),
 			"strokes": data.get("layer_strokes", data.get("authored", [])), "v": g.vertices, "f": g.triangles,
+			"sent": data.get("authored", []),
 			"body_v": data.get("body_v", PackedFloat32Array()), "body_f": data.get("body_f", PackedInt32Array()),
 			"reach": float(opts.cover_reach), "out": {}}
 	data.checks_job = job
@@ -781,6 +857,17 @@ func _mesh_done(g: Dictionary, note: String) -> void:
 
 static func _run_checks(job: Dictionary) -> void:
 	var t0 := Time.get_ticks_msec()
+	var back := []
+	var points := 0
+	for s in job.sent:
+		points += s.points.size()
+		var n := reversals(s.points)
+		if n > 0:
+			back.append("%s %d" % [s.name, n])
+	job.out.clean = {"ok": back.is_empty() and points > 0, "why": ("%d points sent to curvenet, none steps back" % points)
+			if back.is_empty() else "points that step back against the step before: %s of %d sent" % [", ".join(back), points]}
+	if points == 0:
+		job.out.clean.why = "no points sent to curvenet"
 	job.out.panels = GarmentChecks.panels(job.cycles, job.patches, job.v, job.f)
 	job.out.cover = GarmentChecks.cover(job.strokes, job.v, job.f, job.reach)
 	var t1 := Time.get_ticks_msec()
@@ -816,7 +903,7 @@ func _checks_poll() -> void:
 		return
 	_goto("DONE", data.checks_note)
 
-const CHECKS := ["panels", "cover", "inside"]
+const CHECKS := ["clean", "panels", "cover", "inside"]
 
 # Planted controls for RFD 3010 gates 1 and 2: drop_patch k removes the shell triangles
 # nearest patch k; plant_inward moves garment vertex 0 onto the root joint, inside the body.

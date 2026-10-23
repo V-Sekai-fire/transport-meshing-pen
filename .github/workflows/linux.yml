@@ -59,3 +59,10 @@ jobs:
           fi
           echo "--- ctl.txt ---"; cat ctl.txt
           grep -q "inside: 1 vertices inside the body" ctl.txt
+      - name: Clean live strokes (RFD 3010 gate 3) and its control (no_clean must FAIL)
+        run: |
+          timeout 300 "$GODOT" --headless --path . --xr-mode off --script tools/gate_clean_strokes.gd | tee clean.txt
+          grep -q "^RESULT: PASS" clean.txt
+          if timeout 300 "$GODOT" --headless --path . --xr-mode off --script tools/gate_clean_strokes.gd -- --control=no_clean; then
+            echo "the gate passed strokes that step back"; exit 1
+          fi
