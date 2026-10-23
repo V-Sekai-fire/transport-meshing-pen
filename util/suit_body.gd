@@ -1,63 +1,70 @@
 # suit_body -- a body drawn in the ChArUco suit (weftspun RFD 2332), cut into panels the
 # way a suit is sewn, so its surface reads: where a garment sits, where it clips, how the
-# body turns. Nothing is projected and nothing is mirrored.
+# body turns. Nothing is projected.
 #
-# tools/suit_udim.py gives the body UVs (fixtures/<avatar>/avatar_suit.obj): xatlas charts
-# at the suit's real scale (30 mm squares) in UDIM tiles 1001, 1002, each chart turned to
-# read the right way round from outside, then unpacked as V-Sekai/fbx-udim-unpack does: one
-# material per tile (usemtl suit_<tile>), UVs in 0..1, texture xr/suit/charuco-suit_<tile>.png.
-# Here each tile becomes one surface of the ArrayMesh with its own material.
+# The panels come from the engine's own xatlas (modules/xatlas_unwrap, through
+# ArrayMesh.lightmap_unwrap) at the suit's print scale, PX_PER_M texels a metre. xatlas runs
+# with fixWinding there, so every panel's UVs turn the same way as its faces. The unwrap writes
+# UV2 in 0..1 of an atlas lightmap_size_hint texels wide; UV1 takes the same layout in sheet
+# units, so the 2205 by 2925 px sheet (45 px a 30 mm square, tools/suit_texture.py) lands at its
+# real size and repeats past its edge, as UDIM tiles do.
 extends RefCounted
 
-const TILE_TEXTURE := "res://xr/suit/charuco-suit_%s.png"
+const SHEET := "res://xr/suit/charuco-suit.png"
+const PX_PER_M := 1500.0
 
-# The suit mesh for res://fixtures/<avatar>/avatar.obj, or null when it has none (the
-# caller then draws the body plain). Its positions are the fixture's own.
+# The suit-panelled mesh of v/f (an OBJ's arrays, as util/obj_io.gd reads them):
+# {"mesh": ArrayMesh, "atlas": Vector2i, "ms": unwrap time} or {"error": why}.
+static func build(v: PackedFloat32Array, f: PackedInt32Array, tint: Color = Color.WHITE) -> Dictionary:
+	var sheet = load(SHEET)
+	if sheet == null:
+		return {"error": "%s did not load (tools/suit_texture.py writes it)" % SHEET}
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in v.size() / 3:
+		st.add_vertex(Vector3(v[3 * i], v[3 * i + 1], v[3 * i + 2]))
+	for i in range(0, f.size(), 3):
+		# OBJ faces wind anticlockwise outward; Godot's front faces wind clockwise.
+		st.add_index(f[i])
+		st.add_index(f[i + 2])
+		st.add_index(f[i + 1])
+	st.generate_normals()
+	var m := st.commit()
+	var t0 := Time.get_ticks_msec()
+	var err := m.lightmap_unwrap(Transform3D.IDENTITY, 1.0 / PX_PER_M)
+	if err != OK:
+		return {"error": "lightmap_unwrap: %s (the engine needs modules/xatlas_unwrap)" % error_string(err)}
+	var ms := Time.get_ticks_msec() - t0
+	var atlas := Vector2(m.lightmap_size_hint)
+	var scale := atlas / Vector2(sheet.get_width(), sheet.get_height())
+	var a := m.surface_get_arrays(0)
+	var uv2: PackedVector2Array = a[Mesh.ARRAY_TEX_UV2]
+	var uv := PackedVector2Array()
+	uv.resize(uv2.size())
+	for i in uv2.size():
+		uv[i] = uv2[i] * scale
+	a[Mesh.ARRAY_TEX_UV] = uv
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = tint
+	mat.albedo_texture = sheet
+	mat.texture_repeat = true
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	mat.roughness = 1.0
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	out.surface_set_material(0, mat)
+	return {"mesh": out, "atlas": Vector2i(atlas), "ms": ms}
+
+# build() for an OBJ path, or null with a warning (the caller then draws the body plain).
 static func mesh(avatar_obj: String, tint: Color = Color.WHITE) -> ArrayMesh:
-	var path := avatar_obj.get_basename() + "_suit.obj"
-	var f := FileAccess.open(path, FileAccess.READ)
-	if f == null:
-		push_warning("suit_body: no %s (run tools/suit_udim.py); the body is drawn plain" % path)
+	var m: Dictionary = load("res://util/obj_io.gd").read(avatar_obj)
+	if m.has("error"):
+		push_warning("suit_body: " + m.error)
 		return null
-	var v := PackedVector3Array()
-	var vt := PackedVector2Array()
-	var tiles := {} # tile -> PackedInt32Array of [vertex, uv] pairs, three per face
-	var cur := ""
-	while not f.eof_reached():
-		var p := f.get_line().split(" ", false)
-		if p.is_empty():
-			continue
-		match p[0]:
-			"v":
-				v.append(Vector3(p[1].to_float(), p[2].to_float(), p[3].to_float()))
-			"vt":
-				vt.append(Vector2(p[1].to_float(), p[2].to_float()))
-			"usemtl":
-				cur = p[1].trim_prefix("suit_")
-				if not tiles.has(cur):
-					tiles[cur] = PackedInt32Array()
-			"f":
-				for k in [1, 3, 2]: # wire winding (CCW outward) -> Godot's
-					var ids := p[k].split("/")
-					tiles[cur].append_array([ids[0].to_int() - 1, ids[1].to_int() - 1])
-	var m := ArrayMesh.new()
-	for t in tiles:
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var pairs: PackedInt32Array = tiles[t]
-		for i in range(0, pairs.size(), 2):
-			var uv := vt[pairs[i + 1]]
-			st.set_uv(Vector2(uv.x, 1.0 - uv.y)) # the file's v points up, Godot's down
-			st.add_vertex(v[pairs[i]])
-		st.index()
-		st.generate_normals()
-		st.commit(m)
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = tint
-		mat.albedo_texture = load(TILE_TEXTURE % t)
-		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
-		mat.roughness = 1.0
-		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		m.surface_set_material(m.get_surface_count() - 1, mat)
-		m.surface_set_name(m.get_surface_count() - 1, "suit_" + t)
-	return m
+	var r := build(m.v, m.f, tint)
+	if r.has("error"):
+		push_warning("suit_body: %s; the body is drawn plain" % r.error)
+		return null
+	print("[dress-on] suit_body: %s unwrapped in %d ms, atlas %dx%d texels" % [avatar_obj, r.ms, r.atlas.x, r.atlas.y])
+	return r.mesh

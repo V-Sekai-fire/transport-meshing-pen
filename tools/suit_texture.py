@@ -3,8 +3,8 @@
 The image is drawn from the SOMA suit detector's own board (edualvarado/SOMA,
 01-Suit-Processing/caliboards/suit/suit.py: CharucoBoard((49, 65), 0.03, 0.022,
 DICT_4X4_1000), legacy pattern), so the markers on the body are the ones that
-detector reads: a sheet 1.47 by 1.95 m (30 mm squares). tools/suit_udim.py cuts it
-into panels on the body (UDIM tiles 1001 and 1002).
+detector reads: a sheet 1.47 by 1.95 m (30 mm squares). util/suit_body.gd cuts it
+into panels on the body with the engine's xatlas.
 
     python tools/suit_texture.py [--px 45] [--out xr/suit/charuco-suit.png]
     python tools/suit_texture.py --read <render.png>   (markers a camera reads off a render)

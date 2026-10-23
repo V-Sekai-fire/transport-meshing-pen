@@ -3,6 +3,7 @@
 # per feature writes YYYYMMDD_meshing-pen_joy-<feature>_NNNN.png and .tsv, this writes the .cff.
 # Every unmet precondition is a counted FAIL; exit 0 only with none.
 #   GODOT=<double editor> tools/orbit_views.sh <tag> <outdir> [--xmp] [--desk] [--control=zero_views]
+# FEATURES="suit-body" picks features (default: the three joy features).
 # --xmp makes each .xmp with `mix cff.xmp ... --check` in MANUALS=<manuals-weftspun>; without it the
 # missing .xmp is named and counted as unchecked. A release passes --xmp.
 set -uo pipefail
@@ -48,11 +49,13 @@ mkdir -p "$OUT/.oracle"
 
 "$TO" 900 "$GODOT" --headless --path "$ROOT" --import >"$OUT/.import.log" 2>&1
 
-for feature in walking persona world-grab; do
+FEATURES="${FEATURES:-walking persona world-grab}"
+for feature in $FEATURES; do
 	case $feature in
 		walking) title="walking a faithful station in VR"; joy="(likely, p=0.70)" ;;
 		persona) title="the persona visitor touring on its own"; joy="(even, p=0.45)" ;;
 		world-grab) title="world grab: turning the town like a model"; joy="(likely, p=0.65)" ;;
+		suit-body) title="the body in the ChArUco suit, cut into UDIM panels"; joy="(not forecast)" ;;
 	esac
 	n=1
 	while compgen -G "$OUT/${DAY}_meshing-pen_joy-${feature}_$(printf %04d $n).*" >/dev/null; do n=$((n + 1)); done

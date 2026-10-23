@@ -6,8 +6,10 @@
 # 0.8 m to 0.2 m apart and turning them 15 degrees; the measured grab moves the world against a fixed
 # viewer, and 8 cameras orbit the grab pivot, columns before | after, scale and yaw in the .tsv.
 # Each view counts when it is not one flat colour and changed since its camera
-# moved; a missing one is a `none` row in the .tsv and FAILs. --control=zero_views never updates the capture.
-#   godot --path . --script res://tools/orbit_views.sgd -- --feature=walking|persona|world-grab --out=<png>
+# moved; a missing one is a `none` row in the .tsv and FAILs.
+# suit-body: the avatar alone, 8 cameras orbiting its hips, columns the ChArUco suit cut into UDIM
+# panels (util/suit_body.gd) | the old flat skin; --avatar=foxgirl|maro. --control=zero_views never updates the capture.
+#   godot --path . --script res://tools/orbit_views.sgd -- --feature=walking|persona|world-grab|suit-body --out=<png>
 #       [--oracle=<prefix>] [--tag=<release>] [--commit=<sha>] [--control=zero_views]
 extends SceneTree
 
@@ -25,11 +27,14 @@ const HAND_Z := -0.4
 const GRAB_TURN := 15.0
 const GRAB_CYCLES := 3
 const ORBIT_R := 6.0
+const BODY_R := 2.2
+const BODY_AT := Vector3(0.0, 0.9, 0.0)
 const DIFF := "shader_type canvas_item;\nuniform sampler2D a : filter_linear;\nuniform sampler2D b : filter_linear;\nuniform float gain = 1.0;\nvoid fragment() {\n\tCOLOR = vec4(clamp(abs(texture(a, UV).rgb - texture(b, UV).rgb) * gain, 0.0, 1.0), 1.0);\n}\n"
 const FEATURES := {
 	"walking": ["walking a faithful station in VR", "(likely, p=0.70)", "motivation, surprise"],
 	"persona": ["the persona visitor touring on its own", "(even, p=0.45)", "emergence"],
 	"world-grab": ["world grab: turning the town like a model", "(likely, p=0.65)", "sense, surprise"],
+	"suit-body": ["the body in the ChArUco suit, cut into UDIM panels", "(not forecast)", "sense"],
 }
 
 var _feature := ""
@@ -61,6 +66,9 @@ var _origin := Transform3D()
 var _canvas_rest := Transform3D()
 var _station_rest := Transform3D()
 var _grab := {}
+var _avatar := "foxgirl"
+var _suit: MeshInstance3D
+var _plain: MeshInstance3D
 
 
 func _initialize() -> void:
@@ -75,10 +83,15 @@ func _initialize() -> void:
 			_tag = a.substr(6)
 		elif a.begins_with("--commit="):
 			_commit = a.substr(9)
+		elif a.begins_with("--avatar="):
+			_avatar = a.substr(9)
 		elif a == "--control=zero_views":
 			_zero = true
 	if not FEATURES.has(_feature) or _out == "":
 		_fail("usage: --feature=%s --out=<png>" % "|".join(FEATURES.keys()))
+		return
+	if _feature == "suit-body":
+		_body_scene()
 		return
 	if _feature == "walking":
 		if _oracle == "":
@@ -115,13 +128,58 @@ func _on_built(_stats: Dictionary) -> void:
 			_rows.append({"name": "view %d  az %.1f  el %.1f" % [i, views[i][2], views[i][3]], "cells": [null, null, null],
 					"view": i, "views": [views[i]], "n": views.size()})
 		_job = 0
+	elif _feature == "suit-body":
+		var views := _hammersley("8@0,0")
+		for i in views.size():
+			_rows.append({"name": "view %d  az %.1f  el %.1f" % [i, views[i][2], views[i][3]], "cells": [null, null],
+					"views": [views[i]], "n": views.size(), "view": i})
+			var look := Basis.from_euler(Vector3(deg_to_rad(views[i][3]), deg_to_rad(views[i][2]), 0.0), EULER_ORDER_YXZ)
+			var at := Transform3D(look, BODY_AT + look.z * BODY_R)
+			_jobs.append({"row": i, "col": 0, "cam": at, "abs": true, "fov": 58.0})
+			_jobs.append({"row": i, "col": 1, "cam": at, "abs": true, "fov": 58.0})
+		_job = 0
+
+
+## The avatar twice at one place, the suit and the flat skin; each job shows the column's body.
+func _body_scene() -> void:
+	var obj := "res://fixtures/%s/avatar.obj" % _avatar
+	var m: Dictionary = load("res://util/obj_io.gd").read(obj)
+	if m.has("error"):
+		_fail(m.error)
+		return
+	var suit = load("res://util/suit_body.gd").mesh(obj)
+	if suit == null:
+		_fail("no suit mesh for %s (util/suit_body.gd; the engine needs modules/xatlas_unwrap)" % obj)
+		return
+	_scene = Node3D.new()
+	_station = _scene
+	_suit = MeshInstance3D.new()
+	_suit.mesh = suit
+	_plain = MeshInstance3D.new()
+	_plain.mesh = load("res://xr/xr_world.gd")._shaded(m.v, m.f)
+	var skin := StandardMaterial3D.new()
+	skin.albedo_color = Color(0.85, 0.75, 0.68)
+	skin.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_plain.material_override = skin
+	var env := WorldEnvironment.new()
+	env.environment = Environment.new()
+	env.environment.background_mode = Environment.BG_COLOR
+	env.environment.background_color = Color(0.7, 0.7, 0.7)
+	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.environment.ambient_light_color = Color(0.5, 0.5, 0.5)
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-40, 30, 0)
+	for n in [_suit, _plain, env, sun]:
+		_scene.add_child(n)
+	get_root().add_child(_scene)
+	_on_built({})
 
 
 func _process(_dt: float) -> bool:
 	if Time.get_ticks_msec() - _t0 > 900000:
 		_fail("no sheet in 900 s")
 		return true
-	if _feature != "walking" and _job < 0 and not _replayed:
+	if _feature not in ["walking", "suit-body"] and _job < 0 and not _replayed:
 		var p = _scene.get_node("World/StationPlayer")
 		if p.walker != null:
 			if _feature == "persona":
@@ -148,6 +206,9 @@ func _render_job() -> void:
 		_before = _cap.get_texture().get_image()
 		_before.convert(Image.FORMAT_RGB8)
 		_cam.global_transform = j.cam if j.get("abs", false) else _station.global_transform * j.cam
+		if _feature == "suit-body":
+			_suit.visible = j.col == 0
+			_plain.visible = j.col == 1
 		_cam.fov = j.fov
 	_frames += 1
 	if _frames < SETTLE:
@@ -303,6 +364,8 @@ func _compose() -> void:
 			row["mad"] = m.mean * 4.0 / 3.0
 			row.name += "\nMAD %.2f (RGB 0-255, full res)" % row.mad
 		_rows.sort_custom(func(x, y): return x.mad > y.mad)
+	elif _feature == "suit-body":
+		cols = PackedStringArray(["%s: ChArUco suit, UDIM panels" % _avatar, "%s: flat skin (before)" % _avatar])
 	elif _feature == "world-grab":
 		cols = PackedStringArray(["before the grab", "after: scale %.4f, yaw %.1f deg" % [_grab.get("scale", 0.0), _grab.get("yaw", 0.0)]])
 	else:
@@ -427,6 +490,8 @@ func _tsv_cells(row: Dictionary) -> Array:
 	if _feature == "walking":
 		var mad: float = row.get("mad", INF)
 		return [[0, 1, row.view, "mad_rgb", -1.0 if is_inf(mad) else mad]]
+	if _feature == "suit-body":
+		return [[0, 0, row.view, "camera_distance_m", BODY_R], [0, 1, row.view, "camera_distance_m", BODY_R]]
 	if _feature == "world-grab":
 		return [[0, 0, row.view, "scale", 1.0], [0, 1, row.view, "scale", _grab.get("scale", 0.0)],
 				[0, 1, row.view, "yaw_deg", _grab.get("yaw", 0.0)]]
