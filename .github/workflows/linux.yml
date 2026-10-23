@@ -66,3 +66,14 @@ jobs:
           if timeout 300 "$GODOT" --headless --path . --xr-mode off --script tools/gate_clean_strokes.gd -- --control=no_clean; then
             echo "the gate passed strokes that step back"; exit 1
           fi
+      - name: The hand-drawn layer replays outside the body; without body_clear it must FAIL by name
+        run: |
+          timeout 300 "$GODOT" --headless --path . --xr-mode off --script tools/gate_replay.gd -- \
+            --strokes=tools/strokes/dev4/hand-skirt-1-noreversal.usda --out=hand.txt --wallclock=240
+          echo "--- hand.txt ---"; cat hand.txt
+          grep -q "RESULT: PASS" hand.txt
+          if timeout 300 "$GODOT" --headless --path . --xr-mode off --script tools/gate_replay.gd -- \
+            --strokes=tools/strokes/dev4/hand-skirt-1-noreversal.usda --body_clear=false --out=hand0.txt --wallclock=240; then
+            echo "the gate passed a skirt through the body"; exit 1
+          fi
+          grep -q "inside: 1 vertices inside the body" hand0.txt

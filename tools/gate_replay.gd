@@ -144,7 +144,10 @@ func _process(_dt: float) -> bool:
 					o[k] = str(meta[k]) if k == "crossings" else str(meta[k]).to_lower() not in ["0", "false"]
 				if _arg(k) != "":
 					o[k] = _arg(k) if k == "crossings" else _arg(k) == "true"
-			_say("replay settings: crossings %s body_snap %s" % [o.get("crossings", "mujoco"), o.get("body_snap", true)])
+			if _arg("body_clear") != "":
+				o["body_clear"] = _arg("body_clear") == "true"
+			_say("replay settings: crossings %s body_snap %s body_clear %s" % [o.get("crossings", "mujoco"), o.get("body_snap", true),
+					o.get("body_clear", true)])
 			match _arg("control"):
 				"":
 					pass

@@ -79,6 +79,8 @@ const DEFAULTS := {
 	"weld_eps": 1e-5,
 	"stop_after": "",         # "MESH" for --gate=pen
 	"garment_checks": true,   # RFD 3010: panels, cover and inside after the shell check
+	"body_clear": true,       # garment vertices inside the body move out (the strokes' body fit)
+	"body_clearance": 0.004,  # m past the body surface, the stroke fit's default
 	"clean_strokes": true,    # a tracked pen's back-and-forth points are dropped (RFD 3010 gate 3)
 	"cover_reach": 0.05,      # m: how far a drawn stroke point may sit from the garment
 	"drop_patch": -1,         # control: the shell loses patch k's triangles -> FAILED(MESH: panels, cover)
@@ -806,8 +808,37 @@ func _mesh(first: bool) -> void:
 	if a.has("error"):
 		_fail(a.error)
 		return
+	if bool(opts.body_clear) and not data.has("port"):
+		var cl := _clear_body(a.vertices)
+		if cl.has("error"):
+			_fail("body_clear: " + str(cl.error))
+			return
+		a.vertices = cl.vertices
+		data.body_cleared = cl.moved
+		print("[dress-on] body_clear: %d of %d garment vertices moved out of the body" % [cl.moved, a.vertices.size() / 3])
 	_mesh_done({"vertices": a.vertices, "triangles": a.triangles, "loops": a.loops, "rims": a.rims,
 			"source_joints": data.joints}, r)
+
+# The surface curvenet builds between the strokes can pass through the body where the
+# strokes do not (dev.4 logbook). Its vertices take the strokes' body fit (weftspun
+# RFD 2287): the collision guest moves each vertex inside the body out through the
+# surface along a horizontal ray from the vertical axis, plus body_clearance.
+func _clear_body(v: PackedFloat32Array) -> Dictionary:
+	if mujoco == null or not mujoco.available():
+		return {"error": "no collision guest (%s)" % (mujoco.reason if mujoco != null else "no stage node")}
+	var err: String = mujoco.load_body("res://fixtures/%s/avatar.obj" % opts.avatar)
+	if err != "":
+		return {"error": err}
+	var pts := PackedVector3Array()
+	for i in v.size() / 3:
+		pts.append(Vector3(v[3 * i], v[3 * i + 1], v[3 * i + 2]))
+	var r: Dictionary = mujoco.push(pts, 0.0, 0.0, float(opts.body_clearance))
+	if r.has("error"):
+		return r
+	var out := PackedFloat32Array()
+	for q in r.points:
+		out.append_array([q.x, q.y, q.z])
+	return {"vertices": out, "moved": int(r.moved)}
 
 func _mesh_done(g: Dictionary, note: String) -> void:
 	if not data.has("port") and not data.counts.get("fixture", false):
