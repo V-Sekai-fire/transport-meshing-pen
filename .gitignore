@@ -54,3 +54,4 @@ build*/
 addons/cineform/bin/
 # A desk's build settings; .env.example shows the keys.
 .env
+.pixi/
