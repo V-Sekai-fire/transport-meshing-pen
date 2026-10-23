@@ -9,7 +9,7 @@ extends SceneTree
 
 const ObjIO := preload("res://util/obj_io.gd")
 const XrWorld := preload("res://xr/xr_world.gd")
-const SuitMaterial := preload("res://util/suit_material.gd")
+const SuitBody := preload("res://util/suit_body.gd")
 
 var _args := {}
 var _frames := 0
@@ -19,7 +19,8 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		_args[kv[0]] = kv[1] if kv.size() > 1 else "1"
-	var m: Dictionary = ObjIO.read("res://fixtures/%s/avatar.obj" % _args.get("avatar", "foxgirl"))
+	var obj := "res://fixtures/%s/avatar.obj" % _args.get("avatar", "foxgirl")
+	var m: Dictionary = ObjIO.read(obj)
 	if m.has("error"):
 		print("RESULT: FAIL (%s)" % m.error)
 		quit(1)
@@ -31,11 +32,13 @@ func _initialize() -> void:
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	root.add_child(_vp)
 	var mi := MeshInstance3D.new()
-	mi.mesh = XrWorld._shaded(m.v, m.f)
 	var plain := _args.has("plain")
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.85, 0.75, 0.68)
-	mi.material_override = mat if plain else SuitMaterial.make()
+	var suit: ArrayMesh = null if plain else SuitBody.mesh(obj)
+	mi.mesh = suit if suit != null else XrWorld._shaded(m.v, m.f)
+	if suit == null:
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.85, 0.75, 0.68)
+		mi.material_override = mat
 	_vp.add_child(mi)
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()

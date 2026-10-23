@@ -9,7 +9,7 @@
 # at the body; that is the flat run Gate 8 screenshots.
 extends Node3D
 
-const SuitMaterial := preload("res://util/suit_material.gd")
+const SuitBody := preload("res://util/suit_body.gd")
 
 const MeshWire := preload("res://util/mesh_wire.gd")
 
@@ -94,8 +94,9 @@ static func _shaded(v: PackedFloat32Array, f: PackedInt32Array) -> ArrayMesh:
 
 func _on_body(v: PackedFloat32Array, f: PackedInt32Array) -> void:
 	var mi: MeshInstance3D = body.get_node("BodyMesh")
-	mi.mesh = _shaded(v, f)
-	mi.material_override = SuitMaterial.make()
+	var suit := SuitBody.mesh("res://fixtures/%s/avatar.obj" % main.pipeline.opts.get("avatar", "foxgirl"))
+	mi.mesh = suit if suit != null else _shaded(v, f)
+	mi.material_override = null if suit != null else _mat(Color(0.85, 0.75, 0.68))
 
 func _on_skeleton(joints: PackedFloat32Array, _bones: PackedInt32Array) -> void:
 	var holder: Node3D = body.get_node("Joints")

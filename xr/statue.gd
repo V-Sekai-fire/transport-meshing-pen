@@ -2,7 +2,7 @@
 # The body is Maro (character-marocchino), and the pipeline fits on Maro when run with avatar "maro".
 extends Node3D
 
-const SuitMaterial := preload("res://util/suit_material.gd")
+const SuitBody := preload("res://util/suit_body.gd")
 
 const ObjIO := preload("res://util/obj_io.gd")
 const XrWorld := preload("res://xr/xr_world.gd")
@@ -82,8 +82,9 @@ func reaches(global_p: Vector3) -> bool:
 
 func _show_body(v: PackedFloat32Array, f: PackedInt32Array) -> void:
 	var mi: MeshInstance3D = body.get_node("BodyMesh")
-	mi.mesh = XrWorld._shaded(v, f)
-	mi.material_override = SuitMaterial.make(STONE)
+	var suit := SuitBody.mesh(BODY, STONE)
+	mi.mesh = suit if suit != null else XrWorld._shaded(v, f)
+	mi.material_override = null if suit != null else _mat(STONE)
 
 func _show_garment(v: PackedFloat32Array, f: PackedInt32Array, _label: String) -> void:
 	garment.mesh = XrWorld._shaded(v, f)
