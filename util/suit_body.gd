@@ -15,10 +15,10 @@ const PX_PER_M := 1500.0
 
 # The suit-panelled mesh of v/f (an OBJ's arrays, as util/obj_io.gd reads them):
 # {"mesh": ArrayMesh, "atlas": Vector2i, "ms": unwrap time} or {"error": why}.
-static func build(v: PackedFloat32Array, f: PackedInt32Array, tint: Color = Color.WHITE) -> Dictionary:
-	var sheet = load(SHEET)
+static func build(v: PackedFloat32Array, f: PackedInt32Array, tint: Color = Color.WHITE, sheet_path: String = SHEET) -> Dictionary:
+	var sheet = load(sheet_path)
 	if sheet == null:
-		return {"error": "%s did not load (tools/suit_texture.py writes it)" % SHEET}
+		return {"error": "%s did not load (tools/suit_texture.py or tools/suit_multiscale.py writes it)" % sheet_path}
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for i in v.size() / 3:
@@ -57,12 +57,12 @@ static func build(v: PackedFloat32Array, f: PackedInt32Array, tint: Color = Colo
 	return {"mesh": out, "atlas": Vector2i(atlas), "ms": ms}
 
 # build() for an OBJ path, or null with a warning (the caller then draws the body plain).
-static func mesh(avatar_obj: String, tint: Color = Color.WHITE) -> ArrayMesh:
+static func mesh(avatar_obj: String, tint: Color = Color.WHITE, sheet_path: String = SHEET) -> ArrayMesh:
 	var m: Dictionary = load("res://util/obj_io.gd").read(avatar_obj)
 	if m.has("error"):
 		push_warning("suit_body: " + m.error)
 		return null
-	var r := build(m.v, m.f, tint)
+	var r := build(m.v, m.f, tint, sheet_path)
 	if r.has("error"):
 		push_warning("suit_body: %s; the body is drawn plain" % r.error)
 		return null

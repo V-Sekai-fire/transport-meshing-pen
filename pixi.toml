@@ -14,12 +14,15 @@ scons = "*"
 suit = { depends-on = ["engine", "engine-test", "suit-texture", "suit-check", "suit-orbit"] }
 
 # The manifest's sibling engine (4-entities/godot): double editor with tests, incremental.
-engine = { cmd = "scons platform=linuxbsd target=editor precision=double tests=yes", cwd = "../../4-entities/godot", env = { SCONSFLAGS = "-j14" } }
+engine = { cmd = "scons platform=linuxbsd target=editor precision=double tests=yes use_static_cpp=no", cwd = "../../4-entities/godot", env = { SCONSFLAGS = "-j14" } }
 # Engine doctest: every lightmap_unwrap chart turns the same way (fails on a mirroring packer).
-engine-test = { cmd = "tools/godot.sh --headless --test --test-case='*lightmap_unwrap*'", depends-on = ["engine"] }
+engine-test = { cmd = "bin/godot.linuxbsd.editor.double.x86_64 --headless --test --test-case='*lightmap_unwrap*'", cwd = "../../4-entities/godot", depends-on = ["engine"] }
 # The suit sheet from the SOMA detector's own board; reads every marker back.
 suit-texture = "python tools/suit_texture.py"
 # Panel winding per avatar, marker reads from four sides, flipped renders must fail.
-suit-check = { cmd = "tools/godot.sh --headless --path . --import > /dev/null 2>&1; sh tools/suit_check.sh", depends-on = ["suit-texture", "engine"] }
+suit-check = { cmd = "sh tools/suit_check.sh", depends-on = ["suit-texture", "engine"] }
 # Orbit views to the contract-orbit-views standard, and the zero-views control that must fail.
 suit-orbit = { cmd = "sh tools/suit_orbit.sh", depends-on = ["suit-check"] }
+# Sim-to-real: both sheets on both bodies from lighthouse-stand cameras, degraded as a cheap
+# 60/120 fps camera, each frame with its truth render; scores markers against the adjusted patches.
+suit-sim = { cmd = "sh tools/suit_sim.sh", depends-on = ["engine"] }
