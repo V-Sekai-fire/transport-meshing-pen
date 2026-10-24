@@ -36,7 +36,7 @@ if(DRESS_ON_WITH_CURVENET)
 	include(${CURVENET_ROOT}/cmake/cassie_graph.cmake OPTIONAL)
 endif()
 
-# lasso.elf (RFD 2287 step 2) on the same godot-lite shim.
+# lasso.elf (RFD66606-2287 step 2) on the same godot-lite shim.
 include(${LASSO_ROOT}/cmake/lasso.cmake)
 
 # Stage 1: the GPU layer's own probes.

@@ -1,6 +1,6 @@
 name: Practices
 
-# RFD 2294's standard practices, from the one shared workflow in manuals-weftspun.
+# RFD66606-2294's standard practices, from the one shared workflow in manuals-weftspun.
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]

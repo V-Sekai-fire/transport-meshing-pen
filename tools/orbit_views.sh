@@ -82,7 +82,7 @@ type: dataset
 title: "$title $joy, meshing-pen $TAG"
 version: "$TAG"
 abstract: >-
-  Orbit views of the RFD 2293 joy feature "$title", forecast $joy: ${views:-0} views from
+  Orbit views of the RFD66606-2293 joy feature "$title", forecast $joy: ${views:-0} views from
   sphere_hammersley_sequence rendered by tools/orbit_views.sgd on the double engine at pen
   commit $COMMIT, with the camera table and metrics in $stem.tsv.
 authors:

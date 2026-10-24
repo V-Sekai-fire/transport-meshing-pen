@@ -1,4 +1,4 @@
-# Native translation gate (RFD 2293): every shipped ELF, opened the way its
+# Native translation gate (RFD66606-2293): every shipped ELF, opened the way its
 # stage opens it, runs from its res://bintr/bintr-<HASH> library, and every
 # .sgd's compiled program has its library (SafeGDScript binds no is_binary_translated).
 #   godot --headless --path . --xr-mode off --script tools/probe_bintr.gd

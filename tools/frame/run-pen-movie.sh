@@ -1,7 +1,7 @@
 #!/bin/bash
 # Render the pen scene flat to a movie (Godot Movie Maker mode), companions driven
 # by the vpen feeder. Flat viewport, so nothing submits to the OpenVR compositor
-# (which asserts under the compat layer). Quits cleanly via --quit-after. RFD 2287.
+# (which asserts under the compat layer). Quits cleanly via --quit-after. RFD66606-2287.
 #   run-pen-movie.sh <tag> <frames> <fps>
 tag=${1:-movie}; frames=${2:-450}; fps=${3:-30}
 R=$HOME/rfd2287; C=$HOME/.local/share/Steam/steamapps/common; P=$R/proton-xrfix

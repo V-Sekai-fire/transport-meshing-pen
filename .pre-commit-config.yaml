@@ -1,4 +1,4 @@
-# RFD 2294's standard practices, defined once in manuals-weftspun. `prek install -t pre-push`
+# RFD66606-2294's standard practices, defined once in manuals-weftspun. `prek install -t pre-push`
 # runs it before each push; CI runs it through .github/workflows/practices.yml.
 repos:
   - repo: https://github.com/V-Sekai-fire/manuals-weftspun

@@ -5,7 +5,7 @@
 # guest ELFs from the goal manifest's sibling checkouts into this project's
 # root (build.sh), builds and runs the host harnesses (the ggml-rd kernel L2,
 # the G3.graph oracle), and, when Godot is on the PATH, imports the project,
-# translates every shipped ELF to a native library in bintr/ (RFD 2293) and
+# translates every shipped ELF to a native library in bintr/ (RFD66606-2293) and
 # runs the headless gates. Every step prints what it runs; the first
 # failure stops the build with a non-zero exit. Plain Elixir, no Mix, no
 # dependencies: what erlef/setup-beam gives a GitHub runner and `apt install

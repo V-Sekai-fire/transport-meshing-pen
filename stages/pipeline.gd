@@ -656,7 +656,7 @@ func _author(first: bool) -> void:
 					data.authored[_authored_of[e.stroke]].points.append(e.pos)
 			"end":
 				var sid: int = _stroke_ids.get(e.stroke, -1)
-				# Parallel-commit finalize (RFD 2274): the MuJoCo guest finds
+				# Parallel-commit finalize (RFD66606-2274): the MuJoCo guest finds
 				# crossings from every authored stroke polyline and the graph splits
 				# at them; add_stroke_with_splits keeps only those on the ending
 				# stroke, so passing the whole set is safe. No guest, or none found,

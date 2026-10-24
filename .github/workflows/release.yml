@@ -1,4 +1,4 @@
-# A pen release on RFD 2297's dev.3: on a tag, the Windows x86_64 game exported headless from the
+# A pen release on RFD66606-2297's dev.3: on a tag, the Windows x86_64 game exported headless from the
 # double engine tools/frame/releases.env pins, its addon .dll checked against its release, and the
 # guest ELFs, under one SHA256SUMS with no archive among them.
 name: release

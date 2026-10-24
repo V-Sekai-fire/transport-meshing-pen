@@ -70,7 +70,7 @@ references:
       trademark of The Khronos Group Inc., and this project is not affiliated with
       or endorsed by them.
 
-  # ── The double build the rung runs on (RFD 2293) ─────────────────────────────
+  # ── The double build the rung runs on (RFD66606-2293) ─────────────────────────────
   - type: software
     title: "Godot Engine at double precision"
     authors:

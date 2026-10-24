@@ -4,7 +4,7 @@ The meshing pen: an XR project where a person draws a character and outfit with 
 
 ## What it is for
 
-It is the hand end of the loop: strokes, pinch and world-grab, and the controller bindings, with the stage code running as sandbox guest programs the project loads. RFD 2262 owns the design and its releases.
+It is the hand end of the loop: strokes, pinch and world-grab, and the controller bindings, with the stage code running as sandbox guest programs the project loads. RFD66606-2262 owns the design and its releases.
 
 ## Build and run
 

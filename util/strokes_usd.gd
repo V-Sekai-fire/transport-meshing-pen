@@ -1,5 +1,5 @@
 # Pen strokes <-> OpenUSD, through usd.elf (stages/usd_stage.gd): GDScript never
-# parses USD (RFD 2234). A stroke is the pipeline's {name, boundary, points}
+# parses USD (RFD66606-2234). A stroke is the pipeline's {name, boundary, points}
 # dict, points in the Body frame (+Y up, metres). The layer is one linear
 # BasisCurves prim per stroke under /Creation; boundary is authored only on the
 # strokes drawn in boundary mode.

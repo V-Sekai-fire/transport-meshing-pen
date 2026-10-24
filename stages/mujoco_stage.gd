@@ -1,7 +1,7 @@
 # mujoco_stage -- mujoco.elf: stroke crossings from the engine's capsule
-# collision (RFD 2274). Optional: when its ELF is absent or fails to load, the
+# collision (RFD66606-2274). Optional: when its ELF is absent or fails to load, the
 # pipeline falls back to curvenet's own solve, which is the parallel-commit
-# rollback (RFD 2119) -- the stroke still commits, on the predicted points.
+# rollback (RFD66606-2119) -- the stroke still commits, on the predicted points.
 extends "res://stages/stage_base.gd"
 
 const REQUIRED := ["mj_crossings", "mjc_load_xml", "mj_push_out"]

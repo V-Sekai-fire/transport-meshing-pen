@@ -2,7 +2,7 @@
 # OpenVR interface surfaces (a controller whose serial begins "vpen_"), so the
 # system draws alongside the person. The person's own left_hand/right_hand are
 # untouched; OpenVR is how the companions get past the OpenXR vive-tracker role
-# cap. Placed under World in xr_main.tscn. RFD 2287.
+# cap. Placed under World in xr_main.tscn. RFD66606-2287.
 extends Node
 
 const CompanionHand := preload("res://xr/companion_hand.gd")
