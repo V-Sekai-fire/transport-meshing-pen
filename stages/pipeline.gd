@@ -58,6 +58,13 @@ var _frames := 0
 var _run_t0 := 0
 var _first := true
 var _stroke_ids := {}
+# The stroke commit in flight on curvenet's worker thread: {stroke}. A commit can take
+# seconds as the sketch grows; on the worker the frames keep coming while it runs.
+var _commit := {}
+# Every authored stroke's points, flat, for the crossings guest: appended once per stroke
+# rather than rebuilt from every polyline on each commit.
+var _cx_points := PackedFloat32Array()
+var _cx_counts := PackedInt32Array()
 var _authored_of := {} # pen stroke index -> data.authored index (the strokes as drawn, for saving)
 var _note := ""
 
@@ -110,6 +117,9 @@ func start(o: Dictionary = {}) -> String:
 	pen_finished = false
 	reason = ""
 	_stroke_ids = {}
+	_commit = {}
+	_cx_points = PackedFloat32Array()
+	_cx_counts = PackedInt32Array()
 	_run_t0 = Time.get_ticks_msec()
 	if infer != null:
 		infer.avatar = str(opts.avatar)
@@ -612,8 +622,18 @@ func _author(first: bool) -> void:
 	if data.has("port"):
 		_port_poll()
 		return
+	if not _commit.is_empty():
+		var cp: Dictionary = curvenet.poll()
+		if not cp.done:
+			return
+		var r := str(cp.result)
+		_commit = {}
+		data.pen_ends.append(r)
+		if r.begins_with("FAIL"):
+			_fail("pen_end stroke %d: %s" % [data.pen_ends.size() - 1, r])
+			return
 	var n := 0
-	while not pen_queue.is_empty() and (opts.pen_instant or n < PEN_EVENTS_PER_FRAME):
+	while _commit.is_empty() and not pen_queue.is_empty() and (opts.pen_instant or n < PEN_EVENTS_PER_FRAME):
 		var e: Dictionary = pen_queue.pop_front()
 		n += 1
 		match e.kind:
@@ -642,28 +662,32 @@ func _author(first: bool) -> void:
 				# stroke, so passing the whole set is safe. No guest, or none found,
 				# falls back to curvenet's own solve (the parallel-commit rollback).
 				var cx := PackedVector3Array()
+				if _authored_of.has(e.stroke):
+					var pts: PackedVector3Array = data.authored[_authored_of[e.stroke]].points
+					_cx_counts.append(pts.size())
+					for q in pts:
+						_cx_points.append(q.x)
+						_cx_points.append(q.y)
+						_cx_points.append(q.z)
 				if str(opts.crossings) == "mujoco" and mujoco != null and mujoco.available():
-					var polys := []
-					for a in data.authored:
-						polys.append(a.points)
-					cx = mujoco.crossings(polys, _crossing_proximity())
-				var r: String
+					cx = mujoco.crossings_flat(_cx_points, _cx_counts, _crossing_proximity())
+				var st: String
 				if cx.is_empty():
-					r = curvenet.pen_end_raw(sid)
+					st = curvenet.start("pen_end", [sid])
 				else:
 					var flat := PackedFloat32Array()
 					for p in cx:
 						flat.append(p.x)
 						flat.append(p.y)
 						flat.append(p.z)
-					r = curvenet.pen_end_with_crossings(sid, flat)
-				data.pen_ends.append(r)
-				if r.begins_with("FAIL"):
-					_fail("pen_end stroke %d: %s" % [e.stroke, r])
+					st = curvenet.start("pen_end_with_crossings", [sid, flat])
+				if not st.begins_with("STARTED"):
+					_fail("pen_end stroke %d: %s" % [e.stroke, st])
 					return
+				_commit = {"stroke": e.stroke}
 		if e.kind == "end" and not opts.pen_instant:
 			break # at most one stroke ends per frame
-	if not pen_queue.is_empty() or not pen_finished:
+	if not _commit.is_empty() or not pen_queue.is_empty() or not pen_finished:
 		return
 	var last: String = data.pen_ends[-1] if not data.pen_ends.is_empty() else ""
 	var cb: String = curvenet.build_curvenet()

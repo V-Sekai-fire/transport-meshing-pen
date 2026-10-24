@@ -36,6 +36,20 @@ func crossings(strokes: Array, proximity: float) -> PackedVector3Array:
 		out.append(Vector3(f[i * 3], f[i * 3 + 1], f[i * 3 + 2]))
 	return out
 
+# crossings() for strokes already flat (x,y,z per point, a count per stroke). The guest
+# keeps the strokes it has seen, so a caller that appends one stroke per call pays for it.
+func crossings_flat(points: PackedFloat32Array, counts: PackedInt32Array, proximity: float) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	if not available():
+		return out
+	var raw = call_now("mj_crossings", [points, counts, proximity])
+	if typeof(raw) != TYPE_PACKED_FLOAT64_ARRAY and typeof(raw) != TYPE_PACKED_FLOAT32_ARRAY:
+		return out
+	var f := PackedFloat64Array(raw)
+	for i in int(f.size() / 3):
+		out.append(Vector3(f[i * 3], f[i * 3 + 1], f[i * 3 + 2]))
+	return out
+
 # Loads the triangle mesh at obj_path as the one model, for push(). "" or the error.
 func load_body(obj_path: String) -> String:
 	if not available():
