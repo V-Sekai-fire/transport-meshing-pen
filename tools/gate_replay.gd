@@ -30,6 +30,8 @@
 # full skirt's 2 cycles with 2 openings (Gate 8's pen criteria).
 extends SceneTree
 
+const Topology := preload("res://tools/session_topology.gd")
+
 const StrokesUsd := preload("res://util/strokes_usd.gd")
 
 const SCENE := "res://xr_main.tscn"
@@ -298,14 +300,18 @@ func _session_check(p, meta: Dictionary) -> Dictionary:
 	_say("session: %s (%d ms)" % [lines[0], ms])
 	_say("session: cycles %d, exact matches %d of %d, expected-only %d, port-only %d" % [port.size(), exact,
 			want.size(), expected_only, port_only])
-	for k in want:
-		if not port.has(k):
-			_say("session: expected-only " + k)
-	for k in port:
-		if not want.has(k):
-			_say("session: port-only " + k)
-	var ok: bool = exact == want.size() and want.size() == expected.size()
-	return {"ok": ok, "why": "session cycles: %d of %d expected matched" % [exact, want.size()]}
+	# A face the log never records as removed stays in the expected list after later strokes split it.
+	# Such a face passes when its boundary equals the mod-2 sum of port faces (see session_topology.gd).
+	var cmp: Dictionary = Topology.compare(want.keys(), lines.slice(1))
+	for k in cmp.covered:
+		_say("session: expected-only %s is covered by port faces %s" % [k, str(cmp.covered[k])])
+	for k in cmp.uncovered:
+		_say("session: expected-only " + k + " (not covered by port faces)")
+	for k in cmp.unexplained:
+		_say("session: port-only " + k)
+	var topo_ok: bool = cmp.uncovered.is_empty() and cmp.unexplained.is_empty() and want.size() == expected.size()
+	return {"ok": topo_ok, "why": "session cycles: %d of %d expected matched exactly, %d covered by port faces" % [exact,
+			want.size(), cmp.covered.size()]}
 
 # What MESH measured of the garment shell.
 static func _mesh_line(p) -> String:
