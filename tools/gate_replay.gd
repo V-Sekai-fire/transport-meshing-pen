@@ -7,7 +7,7 @@
 #   python3 tools/replay_oxrsys.py <plan.json>      (started alongside)
 #
 #   godot --headless --path . --xr-mode off --script tools/gate_replay.gd -- \
-#       --strokes=tools/strokes/skirt.usda [--control=drop_seam]
+#       --strokes=tools/strokes/skirt.usda [--control=drop_seam|drop_patch|plant_inside]
 #
 # --strokes replays saved strokes with no XR and checks them against the
 # layer's expected counts; --control=drop_seam drops seam_back and must FAIL
@@ -150,6 +150,8 @@ func _process(_dt: float) -> bool:
 					pass
 				"drop_seam":
 					o["drop_seam"] = true
+				"drop_patch", "plant_inside":
+					o[_arg("control")] = true
 				_:
 					_finish("FAIL (unknown control %s)" % _arg("control"))
 					return false

@@ -18,7 +18,9 @@
 # Then both rings grow by the same amount if the straight cone between them
 # would pass closer than CLEARANCE to the body (FoxGirl's hips: the rings
 # alone leave it 2.5 cm inside), since fit_begin refuses a garment that starts
-# intersecting the body.
+# intersecting the body. CLEARANCE is 2 cm, not 1: curvenet's surface sags
+# inside the cone between the seams, and at 1 cm 9 of Maro's hip vertices were
+# 3 to 12 mm inside the body (MESH gate "nothing inside"); 1.5 cm passes.
 #
 # The rings are boundary strokes (curvenet's "boundary" pen mode, captured at
 # pen_begin; the begin event carries it): a cycle made only of them is an
@@ -35,7 +37,7 @@ extends RefCounted
 
 const Skeleton15 := preload("res://util/skeleton15.gd")
 const BAND := 0.02
-const CLEARANCE := 0.01
+const CLEARANCE := 0.02
 const HAND_CUT := 0.6
 
 # body_v: PackedFloat32Array xyz; joints: 45 floats in the 15-joint layout.
