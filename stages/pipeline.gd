@@ -21,6 +21,7 @@ const PenSource := preload("res://xr/pen_source_scripted.gd")
 const MeshTopo := preload("res://util/mesh_topo.gd")
 const MeshWire := preload("res://util/mesh_wire.gd")
 const StrokesUsd := preload("res://util/strokes_usd.gd")
+const GarmentGates := preload("res://util/garment_gates.gd")
 
 signal state_changed(state: String, record: Dictionary)
 signal body_ready(v: PackedFloat32Array, f: PackedInt32Array)
@@ -80,6 +81,8 @@ const DEFAULTS := {
 	                          # -> FAILED(MESH)
 	"closed_rings": false,
 	"no_boundary": false,     # control: the rings are ordinary strokes, so their caps are patched too
+	"drop_patch": false,      # control: the last patch is dropped before gate 1 -> FAILED(MESH: every panel)
+	"plant_inside": false,    # control: one garment vertex moves inside the body -> FAILED(MESH: nothing inside)
 	"mesh_edge": 0.03,        # curvenet mesh_build target_edge_length (m); 0 = no remesh
 	"mesh_workers": 1,        # recorded strokes: curvenet sandboxes meshing patches at once; 0 = min(cores - 1, 8)
 	"weld_eps": 1e-5,
@@ -766,13 +769,37 @@ func _mesh_done(g: Dictionary, note: String) -> void:
 		print("[dress-on] mesh: %d v %d f sha256 %s" % [nv, nf, data.mesh.sha256])
 		_goto("DONE", "%s | %d v %d f, %d components, %d boundary loops, %d rims" % [note, nv, nf, comps, loops.size(), rims.size()])
 		return
+	var tpp: PackedInt32Array = curvenet.patch_triangle_counts() if curvenet != null else PackedInt32Array()
+	if opts.drop_patch and not tpp.is_empty():
+		tpp.resize(tpp.size() - 1)
+	var g1 := GarmentGates.every_panel(int(data.get("counts", {}).get("cycles", -1)), tpp)
+	data.mesh.patch_triangles = Array(tpp)
+	if g1 != "":
+		_fail(g1)
+		return
+	var gv: PackedFloat32Array = PackedFloat32Array(g.vertices)
+	if opts.plant_inside:
+		var at := GarmentGates.inside_point(data.get("body_v", PackedFloat32Array()), data.get("body_f", PackedInt32Array()))
+		if at.is_empty():
+			_fail("plant_inside: no body point found inside the body")
+			return
+		gv[0] = at[0]
+		gv[1] = at[1]
+		gv[2] = at[2]
+	var t0 := Time.get_ticks_msec()
+	var g2 := GarmentGates.nothing_inside(gv, data.get("body_v", PackedFloat32Array()), data.get("body_f", PackedInt32Array()))
+	data.mesh.inside_ms = Time.get_ticks_msec() - t0
+	if g2 != "":
+		_fail(g2)
+		return
 	# A skirt is one closed shell, double-sided in its geometry: one component, no boundary
 	# loop, and two rims where the drawn tube was open (waist, hem).
 	if nf == 0 or comps != 1 or loops.size() != 0 or rims.size() != 2 or not data.mesh.finite:
 		_fail("not a closed skirt shell: %d triangles, %d components, %d boundary loops, %d rims (want >0, 1, 0, 2)%s" % [
 				nf, comps, loops.size(), rims.size(), "" if data.mesh.finite else ", non-finite vertices"])
 		return
-	_goto("DONE", "%s | %d v %d f, closed, %d rims" % [note, nv, nf, rims.size()])
+	_goto("DONE", "%s | %d v %d f, closed, %d rims, patches %s, 0 inside the body (%d ms)" % [note, nv, nf, rims.size(),
+			str(data.mesh.patch_triangles), int(data.mesh.inside_ms)])
 
 # --- helpers ---------------------------------------------------------------------------------
 

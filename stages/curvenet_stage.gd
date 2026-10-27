@@ -183,6 +183,16 @@ func patch_indices(i: int = 0) -> String:
 		return str(f)
 	return "patch %d: %d triangles" % [i, f.size() / 3]
 
+# Triangles in each of curvenet's patches, in patch order; empty with no sandbox.
+func patch_triangle_counts() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	if sandbox == null:
+		return out
+	for i in patches():
+		var f = call_now("patch_indices", [i])
+		out.append(f.size() / 3 if typeof(f) == TYPE_PACKED_INT32_ARRAY else 0)
+	return out
+
 # The built mesh's source patch per triangle (-1 after a remesh).
 func mesh_patch_ids() -> String:
 	if sandbox == null:
