@@ -29,6 +29,9 @@ fetch() { # repo tag file...
     grep -q " $f\$" "$tmp/$tag.sums" || { echo "FAIL $f is not in $repo@$tag's SHA256SUMS"; exit 1; }
     (cd "$tmp" && grep " $f\$" "$tag.sums" | sum256 -c --quiet -) || { echo "FAIL $f does not match $repo@$tag"; exit 1; }
     mv "$tmp/$f" .
+    # A download drops the executable bit, which leaves a tracked ELF showing a
+    # mode change in every checkout. Put back whatever the index carries.
+    [ "$(git ls-files -s -- "$f" | awk '{print $1}')" = "100755" ] && chmod +x "$f"
     echo "  $f  $repo@$tag"
   done
 }
@@ -44,6 +47,9 @@ fetch_private() { # repo tag file...
     [ -f "$tmp/$f" ] || { echo "FAIL $f is not in $repo@$tag"; exit 1; }
     (cd "$tmp" && grep " $f\$" SHA256SUMS | sum256 -c --quiet -) || { echo "FAIL $f does not match $repo@$tag"; exit 1; }
     mv "$tmp/$f" .
+    # A download drops the executable bit, which leaves a tracked ELF showing a
+    # mode change in every checkout. Put back whatever the index carries.
+    [ "$(git ls-files -s -- "$f" | awk '{print $1}')" = "100755" ] && chmod +x "$f"
     echo "  $f  $repo@$tag"
   done
 }
