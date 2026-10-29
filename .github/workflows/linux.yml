@@ -25,6 +25,10 @@ jobs:
           unzip -oq godot.zip
           chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           echo "GODOT=$PWD/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+      - name: The guest ELFs, from the releases their own repositories publish
+        run: |
+          test -n "${{ secrets.GUEST_TOKEN }}" || { echo "GUEST_TOKEN is unset: usd.elf's release is private and cannot be read without it"; exit 1; }
+          GH_TOKEN="${{ secrets.GUEST_TOKEN }}" ./tools/vendor_guests.sh
       - name: Import
         run: timeout 300 "$GODOT" --headless --path . --import || true
       - name: Load probe (curvenet.elf + usd.elf)

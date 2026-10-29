@@ -35,6 +35,10 @@ jobs:
           (cd addons/godot_sandbox/bin && grep " $so\$" "$RUNNER_TEMP/addon.sums" | sha256sum -c -)
           chmod +x "$RUNNER_TEMP/$bin"
           echo "GODOT=$RUNNER_TEMP/$bin" >> "$GITHUB_ENV"
+      - name: The guest ELFs, from the releases their own repositories publish
+        run: |
+          test -n "${{ secrets.GUEST_TOKEN }}" || { echo "GUEST_TOKEN is unset: usd.elf's release is private and cannot be read without it"; exit 1; }
+          GH_TOKEN="${{ secrets.GUEST_TOKEN }}" ./tools/vendor_guests.sh
       - name: The engine is double
         run: |
           "$GODOT" --headless --version | tee version.txt

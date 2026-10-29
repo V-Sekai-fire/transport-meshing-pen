@@ -51,6 +51,14 @@ build*/
 /usd_probe.elf.uid
 # Native translations, one per ELF hash and platform: tools/build.exs on a desk, the release in CI.
 /bintr/
+# The guest ELFs the pen loads, which their own repositories build and publish:
+# tools/vendor_guests.sh fetches and verifies them. The .uid sidecars stay
+# committed, because Godot resolves res://usd.elf through them.
+/usd.elf
+/curvenet.elf
+/dress_on.elf
+/rd_worker.elf
+/mujoco.elf
 addons/cineform/bin/
 # A desk's build settings; .env.example shows the keys.
 .env

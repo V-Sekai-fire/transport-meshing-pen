@@ -58,6 +58,10 @@ jobs:
         with:
           name: game
           path: release
+      - name: The guest ELFs, from the releases their own repositories publish
+        run: |
+          test -n "${{ secrets.GUEST_TOKEN }}" || { echo "GUEST_TOKEN is unset: usd.elf's release is private and cannot be read without it"; exit 1; }
+          GH_TOKEN="${{ secrets.GUEST_TOKEN }}" ./tools/vendor_guests.sh
       - name: The game's addon checked against its release, the ELFs and one SHA256SUMS
         run: |
           . tools/frame/releases.env
