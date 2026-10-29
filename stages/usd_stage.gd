@@ -111,6 +111,40 @@ func open_file(path: String) -> String:
 		return "FAIL: no file %s" % path
 	return open_package(FileAccess.get_file_as_bytes(g))
 
+# --- streaming assets: a loose document (root layer, sublayers, textures),
+#     streamed in file by file, with no .usdz built first ---------------------
+
+# One file of a loose document, under the path it is referenced by.
+func asset_put(rel: String, bytes: PackedByteArray) -> String:
+	return _s("usd_asset", [rel, bytes])
+
+# One file, read from disk and pushed in CHUNK pieces past the 16 MiB view.
+func asset_file(rel: String, path: String) -> String:
+	var g := ProjectSettings.globalize_path(path)
+	if not FileAccess.file_exists(g):
+		return "FAIL: no file %s" % path
+	var bytes := FileAccess.get_file_as_bytes(g)
+	if bytes.size() <= CHUNK:
+		return _s("usd_asset", [rel, bytes])
+	var at := 0
+	while at < bytes.size():
+		var n: int = mini(CHUNK, bytes.size() - at)
+		var p := _s("usd_asset_push", [rel, bytes.slice(at, at + n)])
+		if not p.begins_with("staged"):
+			return "FAIL: usd_asset_push at %d: %s" % [at, p]
+		at += n
+	return _s("usd_asset_end", [rel])
+
+# Open the streamed document whose root layer is `rel`.
+func open_asset(rel: String) -> String:
+	return _s("usd_open_asset", [rel])
+
+func asset_list() -> String:
+	return _s("usd_asset_list")
+
+func asset_clear() -> String:
+	return _s("usd_asset_clear")
+
 func close() -> String:
 	return _s("usd_close")
 
