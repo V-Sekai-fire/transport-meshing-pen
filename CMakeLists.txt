@@ -83,8 +83,12 @@ set_source_files_properties(${GGML_ROOT}/tests/test-backend-ops.cpp PROPERTIES
 add_library(pjrt_rd STATIC ${GGML_RD_ROOT}/guest/pjrt-rd/pjrt_rd.cpp ${GGML_RD_ROOT}/guest/pjrt-rd/program.cpp)
 target_include_directories(pjrt_rd PUBLIC ${GGML_RD_ROOT}/guest/pjrt-rd)
 target_link_libraries(pjrt_rd PUBLIC ggml ggml-base)
+# ggml-pjrt: a ggml backend whose device is a PJRT C API plugin.
+add_library(ggml_pjrt STATIC ${GGML_RD_ROOT}/guest/ggml-pjrt/ggml-pjrt.cpp)
+target_include_directories(ggml_pjrt PUBLIC ${GGML_RD_ROOT}/guest/ggml-pjrt ${GGML_ROOT}/src)
+target_link_libraries(ggml_pjrt PUBLIC pjrt_rd ggml ggml-base)
 target_include_directories(ggml_test PRIVATE ${GUEST_RUNTIME_ROOT}/guest ${GGML_RD_ROOT}/guest/ggml_test)
-target_link_libraries(ggml_test PRIVATE ggml_rd pjrt_rd pump ggml ggml-cpu ggml-base)
+target_link_libraries(ggml_test PRIVATE ggml_rd ggml_pjrt pjrt_rd pump ggml ggml-cpu ggml-base)
 target_link_options(ggml_test PRIVATE -Wl,--wrap=ggml_backend_init_by_type)
 
 # Gate 0G: usd_probe.elf, and Cut U: usd.elf -- OpenUSD 26.05 from bytes (gates/0g-openusd, gates/U-usd).
