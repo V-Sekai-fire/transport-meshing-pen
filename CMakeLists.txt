@@ -80,7 +80,7 @@ set_source_files_properties(${GGML_ROOT}/tests/test-backend-ops.cpp PROPERTIES
 	COMPILE_OPTIONS "-Wno-deprecated-enum-enum-conversion"
 	COMPILE_DEFINITIONS "main=ggml_test_backend_ops_main;GGML_GUEST_REGISTER_BACKENDS;N_THREADS=1;GGML_GUEST_EXTRA_EVAL_CASES=\"census_cases.inc\"")
 # pjrt-rd: a PJRT C API plugin whose device is ggml-rd, linked into the guest.
-add_library(pjrt_rd STATIC ${GGML_RD_ROOT}/guest/pjrt-rd/pjrt_rd.cpp ${GGML_RD_ROOT}/guest/pjrt-rd/program.cpp)
+add_library(pjrt_rd STATIC ${GGML_RD_ROOT}/guest/pjrt-rd/pjrt_rd.cpp ${GGML_RD_ROOT}/guest/pjrt-rd/program.cpp ${GGML_RD_ROOT}/guest/pjrt-rd/stablehlo.cpp)
 target_include_directories(pjrt_rd PUBLIC ${GGML_RD_ROOT}/guest/pjrt-rd)
 target_link_libraries(pjrt_rd PUBLIC ggml ggml-base)
 # ggml-pjrt: a ggml backend whose device is a PJRT C API plugin.
