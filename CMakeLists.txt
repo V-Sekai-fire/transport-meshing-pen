@@ -174,14 +174,19 @@ add_stage_elf(ggml_test
 	${GGML_RD_ROOT}/guest/ggml_test/probe_conv.cpp
 	${GGML_RD_ROOT}/guest/ggml_test/probe_graph.cpp
 	${GGML_RD_ROOT}/guest/ggml_test/graph_nets.cpp
+	${GGML_RD_ROOT}/guest/ggml_test/probe_pjrt.cpp
 	${GGML_RD_ROOT}/guest/ggml_test/app_graphs/app_graphs.cpp
 	${GGML_ROOT}/tests/test-backend-ops.cpp
 )
 set_source_files_properties(${GGML_ROOT}/tests/test-backend-ops.cpp PROPERTIES
 	COMPILE_OPTIONS "-Wno-deprecated-enum-enum-conversion"
 	COMPILE_DEFINITIONS "main=ggml_test_backend_ops_main;GGML_GUEST_REGISTER_BACKENDS;N_THREADS=1;GGML_GUEST_EXTRA_EVAL_CASES=\"census_cases.inc\"")
+# pjrt-rd: a PJRT C API plugin whose device is ggml-rd, linked into the guest.
+add_library(pjrt_rd STATIC ${GGML_RD_ROOT}/guest/pjrt-rd/pjrt_rd.cpp ${GGML_RD_ROOT}/guest/pjrt-rd/program.cpp)
+target_include_directories(pjrt_rd PUBLIC ${GGML_RD_ROOT}/guest/pjrt-rd)
+target_link_libraries(pjrt_rd PUBLIC ggml ggml-base)
 target_include_directories(ggml_test PRIVATE ${GUEST_RUNTIME_ROOT}/guest ${GGML_RD_ROOT}/guest/ggml_test)
-target_link_libraries(ggml_test PRIVATE ggml_rd pump ggml ggml-cpu ggml-base)
+target_link_libraries(ggml_test PRIVATE ggml_rd pjrt_rd pump ggml ggml-cpu ggml-base)
 target_link_options(ggml_test PRIVATE -Wl,--wrap=ggml_backend_init_by_type)
 
 # Gate 0G: usd_probe.elf, and Cut U: usd.elf -- OpenUSD 26.05 from bytes (gates/0g-openusd, gates/U-usd).
