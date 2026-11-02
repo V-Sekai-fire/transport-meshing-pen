@@ -14,7 +14,7 @@
 #   --targets=a,b     the ELF targets to build (default: all)
 #   --no-elfs         skip the cross-build (use the committed ELFs)
 #   --no-host         skip the host harnesses
-#   --gates=a,b       headless gates to run: load,bintr,crossings,cassie,witness,events,shapes,loops (default: load,bintr)
+#   --gates=a,b       headless gates to run: load,guests,bintr,crossings,cassie,witness,events,shapes,loops (default: load,bintr)
 #   --no-bintr        skip the native translations (the bintr gate then fails)
 #   --sysroot=<dir>   the riscv64 sysroot (else $RISCV64_SYSROOT, else fetched)
 #   --jobs=N          build parallelism (default: the machine's cores)
@@ -183,6 +183,7 @@ defmodule Build do
       script =
         case g do
           "load" -> "tools/probe_load.gd"
+          "guests" -> "tools/probe_guests.gd"
           "bintr" -> "tools/probe_bintr.gd"
           "crossings" -> "tests/e2e_crossings.gd"
           "cassie" -> "tests/cassie_alive.gd"
