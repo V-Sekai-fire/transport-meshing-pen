@@ -91,6 +91,17 @@ defmodule Build do
   end
 
   defp sysroot(_) do
+    # The manifest's mujoco demo checkout (it builds mujoco.elf) carries the sysroot already.
+    synced = Path.join([@weft, "3-interactor/mujoco-sandbox-demo", @sysroot_sub])
+    if File.exists?(Path.join(synced, "toolchain.cmake")) do
+      say("sysroot: #{synced} (the manifest's mujoco demo checkout)")
+      synced
+    else
+      fetch_sysroot()
+    end
+  end
+
+  defp fetch_sysroot do
     dir = Path.join([@root, "build", "riscv64-sysroot-src"])
     unless File.exists?(Path.join([dir, @sysroot_sub, "toolchain.cmake"])) do
       File.mkdir_p!(Path.dirname(dir))
