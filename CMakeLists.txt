@@ -11,12 +11,13 @@ set(GGML_RD_ROOT ${WEFT_ROOT}/2-contract/ggml-rd)
 set(CURVENET_ROOT ${WEFT_ROOT}/3-interactor/curvenet)
 set(LASSO_ROOT ${WEFT_ROOT}/3-interactor/lasso)
 set(USD_GUEST_ROOT ${WEFT_ROOT}/3-interactor/usd-guest)
+set(MUJOCO_ROOT ${WEFT_ROOT}/3-interactor/mujoco-sandbox-demo)
 set(GGML_ROOT ${WEFT_ROOT}/2-contract/ggml)
 
 # __FILE__ (ggml's asserts) and debug info name sources relative to their
 # repository, so a committed ELF names neither the machine nor the checkout it
 # was built in. guest_runtime.cmake maps this project and the roots it builds.
-foreach(root GUEST_COMMON_ROOT CURVENET_ROOT LASSO_ROOT USD_GUEST_ROOT)
+foreach(root GUEST_COMMON_ROOT CURVENET_ROOT LASSO_ROOT USD_GUEST_ROOT MUJOCO_ROOT)
 	add_compile_options("-ffile-prefix-map=${${root}}/=")
 endforeach()
 
@@ -90,6 +91,30 @@ target_link_libraries(ggml_pjrt PUBLIC pjrt_rd ggml ggml-base)
 target_include_directories(ggml_test PRIVATE ${GUEST_RUNTIME_ROOT}/guest ${GGML_RD_ROOT}/guest/ggml_test)
 target_link_libraries(ggml_test PRIVATE ggml_rd ggml_pjrt pjrt_rd pump ggml ggml-cpu ggml-base)
 target_link_options(ggml_test PRIVATE -Wl,--wrap=ggml_backend_init_by_type)
+
+# mujoco.elf: MuJoCo as a guest (interactor-mujoco-sandbox-demo), the stroke crossings, the
+# push-out and the ray/contact queries. The demo's guest/ and its vendored riscv64 MuJoCo build;
+# the model is embedded from its .xml on every build, as the demo's own guest/CMakeLists.txt does.
+if(EXISTS ${MUJOCO_ROOT}/guest/main.cpp)
+	set(MUJOCO_LIBS ${MUJOCO_ROOT}/third_party/riscv64-mujoco/lib)
+	set(MUJOCO_GEN ${CMAKE_BINARY_DIR}/mujoco_gen) # not mujoco/: that is the program's own output path
+	find_package(Python3 REQUIRED COMPONENTS Interpreter)
+	add_custom_command(
+		OUTPUT ${MUJOCO_GEN}/model_data.h
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${MUJOCO_GEN}
+		COMMAND ${Python3_EXECUTABLE} ${MUJOCO_ROOT}/scripts/embed_model.py
+			${MUJOCO_ROOT}/project/plans/newtons_cradle.xml ${MUJOCO_GEN}/model_data.h
+		DEPENDS ${MUJOCO_ROOT}/project/plans/newtons_cradle.xml ${MUJOCO_ROOT}/scripts/embed_model.py
+		COMMENT "Embedding newtons_cradle.xml into mujoco.elf"
+	)
+	add_stage_elf(mujoco ${MUJOCO_ROOT}/guest/main.cpp ${MUJOCO_ROOT}/guest/station.cpp ${MUJOCO_GEN}/model_data.h)
+	target_include_directories(mujoco PRIVATE ${MUJOCO_ROOT}/guest ${MUJOCO_ROOT}/third_party/riscv64-mujoco/include
+		${MUJOCO_GEN})
+	target_link_libraries(mujoco PRIVATE
+		${MUJOCO_LIBS}/libmujoco.a ${MUJOCO_LIBS}/libccd.a ${MUJOCO_LIBS}/libtinyxml2.a
+		${MUJOCO_LIBS}/libqhullstatic_r.a ${MUJOCO_LIBS}/libtinyobjloader.a ${MUJOCO_LIBS}/libminiz.a
+		${MUJOCO_LIBS}/liblodepng.a)
+endif()
 
 # Gate 0G: usd_probe.elf, and Cut U: usd.elf -- OpenUSD 26.05 from bytes (gates/0g-openusd, gates/U-usd).
 include(${USD_GUEST_ROOT}/cmake/usd.cmake)

@@ -27,7 +27,10 @@ jobs:
       matrix:
         include:
           - { part: curvenet, args: "--no-host --targets=curvenet" }
-          - { part: dress-on-lasso, args: "--no-host --targets=dress_on,lasso" }
+          - { part: dress-on, args: "--no-host --targets=dress_on" }
+          # lasso.elf is built, not tracked, so its call gate (tools/probe_guests.gd) runs where it
+          # is built. The MuJoCo archives are LLVM 23.1.1 ThinLTO bitcode, which apt's clang 18 cannot link.
+          - { part: lasso-mujoco, args: "--no-host --targets=lasso,mujoco", gates: "load,guests", llvm: "23.1.1" }
           - { part: probes-ggml, args: "--no-host --targets=probes,ggml_test" }
           - { part: host, args: "--no-elfs" }
     timeout-minutes: 120
@@ -52,6 +55,13 @@ jobs:
           unzip -oq godot.zip -d "$HOME/opt" && ln -sf "$HOME/opt/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$HOME/bin/godot"
           curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo" && chmod +x "$HOME/bin/repo"
           echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: LLVM ${{ matrix.llvm }} from conda-forge
+        if: matrix.llvm
+        run: |
+          curl -fsSL https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj -C "$HOME" bin/micromamba
+          "$HOME/bin/micromamba" create -q -y -p "$HOME/opt/llvm" -c conda-forge \
+            "clang==${{ matrix.llvm }}" "clangxx==${{ matrix.llvm }}" "lld==${{ matrix.llvm }}" "llvm-tools==${{ matrix.llvm }}"
+          echo "$HOME/opt/llvm/bin" >> "$GITHUB_PATH"
       - name: The guests' repositories, from the goal manifest
         working-directory: weft
         run: |
@@ -60,10 +70,10 @@ jobs:
           repo init -q -u https://github.com/V-Sekai-fire/contract-manifest-taskweft -b "$MANIFEST_BRANCH" --depth=1 --no-clone-bundle
           repo sync -q -c --no-tags -j8 \
             contract-guest-runtime contract-guest-common contract-ggml-rd \
-            interactor-curvenet interactor-lasso interactor-usd-guest ggml
-      - name: Build, harnesses and the load gate
+            interactor-curvenet interactor-lasso interactor-mujoco-sandbox-demo interactor-usd-guest ggml
+      - name: Build, harnesses and the load gates
         working-directory: weft/1-transport/meshing-pen
-        run: elixir tools/build.exs --gates=load --no-bintr ${{ matrix.args }}
+        run: elixir tools/build.exs --gates=${{ matrix.gates || 'load' }} --no-bintr ${{ matrix.args }}
       - name: Keep the ELFs
         if: always()
         uses: actions/upload-artifact@v4

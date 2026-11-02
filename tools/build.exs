@@ -14,7 +14,7 @@
 #   --targets=a,b     the ELF targets to build (default: all)
 #   --no-elfs         skip the cross-build (use the committed ELFs)
 #   --no-host         skip the host harnesses
-#   --gates=a,b       headless gates to run: load,bintr,crossings,cassie,witness,events,shapes,loops (default: load,bintr)
+#   --gates=a,b       headless gates to run: load,guests,bintr,crossings,cassie,witness,events,shapes,loops (default: load,bintr)
 #   --no-bintr        skip the native translations (the bintr gate then fails)
 #   --sysroot=<dir>   the riscv64 sysroot (else $RISCV64_SYSROOT, else fetched)
 #   --jobs=N          build parallelism (default: the machine's cores)
@@ -29,7 +29,7 @@ defmodule Build do
   @emit_repos ~w(2-contract/ggml-rd 3-interactor/curvenet)
   @sysroot_repo "https://github.com/V-Sekai-fire/interactor-mujoco-sandbox-demo"
   @sysroot_sub "third_party/riscv64-sysroot"
-  @elfs ~w(dress_on curvenet probes ggml_test lasso)
+  @elfs ~w(dress_on curvenet probes ggml_test lasso mujoco)
 
   def main(argv) do
     load_env(Path.join(@root, ".env"))
@@ -91,6 +91,17 @@ defmodule Build do
   end
 
   defp sysroot(_) do
+    # The manifest's mujoco demo checkout (it builds mujoco.elf) carries the sysroot already.
+    synced = Path.join([@weft, "3-interactor/mujoco-sandbox-demo", @sysroot_sub])
+    if File.exists?(Path.join(synced, "toolchain.cmake")) do
+      say("sysroot: #{synced} (the manifest's mujoco demo checkout)")
+      synced
+    else
+      fetch_sysroot()
+    end
+  end
+
+  defp fetch_sysroot do
     dir = Path.join([@root, "build", "riscv64-sysroot-src"])
     unless File.exists?(Path.join([dir, @sysroot_sub, "toolchain.cmake"])) do
       File.mkdir_p!(Path.dirname(dir))
@@ -172,6 +183,7 @@ defmodule Build do
       script =
         case g do
           "load" -> "tools/probe_load.gd"
+          "guests" -> "tools/probe_guests.gd"
           "bintr" -> "tools/probe_bintr.gd"
           "crossings" -> "tests/e2e_crossings.gd"
           "cassie" -> "tests/cassie_alive.gd"
