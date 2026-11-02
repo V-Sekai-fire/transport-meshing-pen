@@ -29,7 +29,7 @@ defmodule Build do
   @emit_repos ~w(2-contract/ggml-rd 3-interactor/curvenet)
   @sysroot_repo "https://github.com/V-Sekai-fire/interactor-mujoco-sandbox-demo"
   @sysroot_sub "third_party/riscv64-sysroot"
-  @elfs ~w(dress_on curvenet probes ggml_test lasso)
+  @elfs ~w(dress_on curvenet probes ggml_test lasso mujoco)
 
   def main(argv) do
     load_env(Path.join(@root, ".env"))

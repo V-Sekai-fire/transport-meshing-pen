@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the guest ELFs (curvenet, lasso, probes, ggml_test, dress_on) for the
+# Build the guest ELFs (curvenet, lasso, mujoco, probes, ggml_test, dress_on) for the
 # RISC-V sandbox and drop them at this project's root. The stage code is in
 # sibling checkouts of the goal manifest.
 #
@@ -86,5 +86,5 @@ fi
 # BUILD_TARGETS (space-separated) limits the build, e.g. to one ELF.
 # shellcheck disable=SC2086
 cmake --build "$BUILD" ${BUILD_TARGETS:+--target $BUILD_TARGETS} -- -j "${BUILD_JOBS:-8}"
-for t in ${BUILD_TARGETS:-dress_on curvenet probes ggml_test lasso}; do ls -la "$HERE/$t.elf"; done
+for t in ${BUILD_TARGETS:-dress_on curvenet probes ggml_test lasso mujoco}; do ls -la "$HERE/$t.elf"; done
 ls -la "$HERE/usd.elf" 2>/dev/null && sha256sum "$HERE/usd.elf" || echo "usd.elf: not built (no OpenUSD riscv64 build at USD_RV64_DIR)"
